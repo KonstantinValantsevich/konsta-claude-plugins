@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
-  "name": "claude-unity-plugins",
-  "description": "Claude Code plugin marketplace for Unity development tools",
+  "name": "konsta-claude-plugins",
+  "description": "Konsta's Claude Code plugin marketplace",
   "owner": {
     "name": "Konsta"
   },

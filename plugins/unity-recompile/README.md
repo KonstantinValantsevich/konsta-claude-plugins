@@ -39,8 +39,8 @@ Logs and markers are stored in `~/.claude/cache/unity-recompile/`:
 ## Installation
 
 ```
-/plugin marketplace add KonstantinValantsevich/claude-unity-plugins
-/plugin install unity-recompile@claude-unity-plugins
+/plugin marketplace add KonstantinValantsevich/konsta-claude-plugins
+/plugin install unity-recompile@konsta-claude-plugins
 ```
 
 ## Migration from Manual Hook

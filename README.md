@@ -1,19 +1,19 @@
-# Claude Unity Plugins
+# Konsta's Claude Plugins
 
-A marketplace of Claude Code plugins for Unity game development.
+A marketplace of Claude Code plugins by Konsta.
 
 ## Installation
 
 Add this marketplace to Claude Code:
 
 ```
-/plugin marketplace add KonstantinValantsevich/claude-unity-plugins
+/plugin marketplace add KonstantinValantsevich/konsta-claude-plugins
 ```
 
 Then install individual plugins:
 
 ```
-/plugin install unity-recompile@claude-unity-plugins
+/plugin install unity-recompile@konsta-claude-plugins
 ```
 
 ## Plugins
