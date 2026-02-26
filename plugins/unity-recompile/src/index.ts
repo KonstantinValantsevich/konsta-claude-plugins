@@ -69,9 +69,12 @@ async function main(): Promise<void> {
   // Orchestrate recompilation
   const result = await orchestrateRecompile(projectPath, bridgeChangedThisRun);
 
-  // Update marker
-  touchMarker(markerPath);
-  log(`Marker file updated: ${markerPath}`);
+  // Update marker only when recompilation was actually attempted
+  // (matches bash script's attempted_recompile guard)
+  if (result.success || result.didCompile) {
+    touchMarker(markerPath);
+    log(`Marker file updated: ${markerPath}`);
+  }
 
   // Output results
   if (result.success) {
