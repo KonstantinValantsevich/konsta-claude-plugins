@@ -30,17 +30,17 @@ BRIDGE_STATUS_TIMEOUT_SECS=120
 BRIDGE_BUSY_RETRY_DELAY_SECS=1
 BRIDGE_MAX_BUSY_RETRIES=1
 
-# Read stdin JSON containing session info
+# Read stdin JSON containing session info (may be empty when invoked directly)
 stdin_json=$(cat)
 log "stdin length: ${#stdin_json}"
 
-# Extract cwd from Stop hook data
-cwd=$(echo "$stdin_json" | jq -r '.cwd // empty')
-log "cwd: $cwd"
-
+# Extract cwd from Stop hook data, fall back to $PWD
+cwd=$(echo "$stdin_json" | jq -r '.cwd // empty' 2>/dev/null || true)
 if [[ -z "$cwd" ]]; then
-    log "ERROR: No cwd in stdin JSON"
-    exit 0
+    cwd="$PWD"
+    log "cwd (from PWD): $cwd"
+else
+    log "cwd: $cwd"
 fi
 
 # Walk up from cwd to find Unity project root
