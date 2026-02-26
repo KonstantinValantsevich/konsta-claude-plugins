@@ -1,17 +1,27 @@
-import { execSync, spawn } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { log } from "./logger.js";
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const SETTINGS_PATH = path.resolve(
+  __dirname,
+  "..",
+  "hooks",
+  "TripleDot.DotSettings",
+);
+
 /**
- * Run `dotnet format` on changed .cs files in the background (fire-and-forget).
- * Groups files by their .csproj and runs formatting in parallel per project.
+ * Run `jb cleanupcode` on changed .cs files synchronously.
+ * All files are passed in a single invocation (JVM startup dominates;
+ * additional files are essentially free).
  */
-export function runDotnetFormatLint(projectPath: string): void {
+export function runJbCleanupLint(projectPath: string): void {
   try {
-    execSync("which dotnet", { stdio: "ignore", timeout: 5_000 });
+    execSync("which jb", { stdio: "ignore", timeout: 5_000 });
   } catch {
-    log("Lint: dotnet not found, skipping");
+    log("Lint: jb not found, skipping");
     return;
   }
 
@@ -30,63 +40,33 @@ export function runDotnetFormatLint(projectPath: string): void {
     return;
   }
 
-  const csprojs = fs
-    .readdirSync(projectPath)
-    .filter((f) => f.endsWith(".csproj"));
-  if (csprojs.length === 0) {
-    log("Lint: no .csproj files found, skipping");
+  const files = changedFiles
+    .split("\n")
+    .filter(Boolean)
+    .map((f) => path.join(projectPath, f))
+    .filter((f) => fs.existsSync(f));
+
+  if (files.length === 0) {
+    log("Lint: no changed .cs files exist on disk, skipping");
     return;
   }
 
-  const groups = new Map<string, string[]>();
-  for (const file of changedFiles.split("\n").filter(Boolean)) {
-    for (const csproj of csprojs) {
-      const csprojPath = path.join(projectPath, csproj);
-      try {
-        const content = fs.readFileSync(csprojPath, "utf-8");
-        if (content.includes(`"${file}"`)) {
-          if (!groups.has(csproj)) groups.set(csproj, []);
-          groups.get(csproj)!.push(file);
-          break;
-        }
-      } catch {
-        // Skip unreadable csproj
-      }
-    }
+  log(`Lint: formatting ${files.length} file(s) with jb cleanupcode`);
+
+  const args = [...files];
+  if (fs.existsSync(SETTINGS_PATH)) {
+    args.push(`--settings=${SETTINGS_PATH}`);
+  }
+  args.push("--verbosity=WARN");
+
+  try {
+    execFileSync("jb", ["cleanupcode", ...args], {
+      timeout: 120_000,
+      stdio: "pipe",
+    });
+  } catch {
+    log("Lint: jb cleanupcode returned non-zero (warnings likely)");
   }
 
-  if (groups.size === 0) {
-    log("Lint: no files matched any .csproj, skipping");
-    return;
-  }
-
-  const fileCount = changedFiles.split("\n").filter(Boolean).length;
-  log(
-    `Lint: formatting ${fileCount} file(s) across ${groups.size} project(s)`,
-  );
-
-  for (const [csproj, files] of groups) {
-    const includeArg = files.join(",");
-    const csprojPath = path.join(projectPath, csproj);
-    log(`Lint: dotnet format ${csproj} --include ${includeArg}`);
-    const child = spawn(
-      "dotnet",
-      [
-        "format",
-        csprojPath,
-        "--include",
-        includeArg,
-        "--severity",
-        "warn",
-        "--no-restore",
-        "--verbosity",
-        "quiet",
-      ],
-      {
-        detached: true,
-        stdio: "ignore",
-      },
-    );
-    child.unref();
-  }
+  log("Lint: done");
 }

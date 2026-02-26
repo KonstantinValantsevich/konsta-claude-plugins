@@ -10,7 +10,7 @@ import {
 } from "./project/changes.js";
 import { ensureBridgeInstalled, ensureGitExclude } from "./bridge/install.js";
 import { orchestrateRecompile } from "./bridge/orchestrate.js";
-import { runDotnetFormatLint } from "./lint.js";
+import { runJbCleanupLint } from "./lint.js";
 
 async function main(): Promise<void> {
   log("=== Hook started ===");
@@ -80,7 +80,7 @@ async function main(): Promise<void> {
   if (result.success) {
     log("SUCCESS: Unity recompilation complete");
     process.stderr.write("Unity compiled successfully\n");
-    runDotnetFormatLint(projectPath);
+    runJbCleanupLint(projectPath);
     process.exit(0);
   } else {
     log("FAILED: Unity compilation errors found");
