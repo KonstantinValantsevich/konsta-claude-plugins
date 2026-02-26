@@ -42,11 +42,3 @@ Logs and markers are stored in `~/.claude/cache/unity-recompile/`:
 /plugin marketplace add KonstantinValantsevich/konsta-claude-plugins
 /plugin install unity-recompile@konsta-claude-plugins
 ```
-
-## Migration from Manual Hook
-
-If you previously had `unity-recompile.sh` configured directly in `~/.claude/settings.json`:
-
-1. Remove the old Stop hook entry from `~/.claude/settings.json`
-2. The old marker files in `~/.claude/hooks/markers/` can be deleted
-3. Bridge files already in Unity projects continue to work
