@@ -26,7 +26,7 @@ Two entry points consume the same core:
 
 ## Core API
 
-All functions are async. All accept an optional injectable `Logger`.
+All accept an optional injectable `Logger`. Functions that perform I/O are async; pure filesystem walks may be sync.
 
 ```typescript
 interface Logger {
@@ -34,26 +34,65 @@ interface Logger {
   error(message: string): void;
 }
 
-// core/detect.ts
-detectProject(cwd: string): Promise<string | null>
+// core/detect.ts — sync (pure filesystem walk with existsSync)
+detectProject(cwd: string): string | null
 
-// core/recompile.ts
+// core/recompile.ts — async (spawns processes, polls IPC)
 recompile(projectPath: string, logger?: Logger): Promise<RecompileResult>
-// RecompileResult: { success: boolean, skipped: boolean, errors: CompilationError[] }
 
-// core/status.ts
+// core/status.ts — async (checks processes, reads files)
 getStatus(projectPath: string, logger?: Logger): Promise<StatusResult>
-// StatusResult: { editorRunning: boolean, bridgeReady: boolean, unityVersion: string, ... }
 
-// core/lint.ts
+// core/lint.ts — async (spawns jb cleanupcode child process)
 lint(projectPath: string, logger?: Logger): Promise<LintResult>
-// LintResult: { filesLinted: number, success: boolean }
 ```
 
-Design decisions:
+### Result Types
+
+```typescript
+interface CompilationError {
+  assembly: string;
+  file: string;
+  line: number;
+  column: number;
+  message: string;
+  type: string;  // "error" | "warning"
+}
+
+interface RecompileResult {
+  success: boolean;
+  skipped: boolean;   // true when no C# changes detected
+  errors: CompilationError[];
+}
+
+interface StatusResult {
+  editorRunning: boolean;
+  editorPid: number | null;
+  bridgeReady: boolean;
+  bridgeVersion: number | null;
+  protocolVersion: number | null;
+  unityVersion: string | null;
+  projectPath: string;
+  lastRecompileMarker: Date | null;  // mtime of marker file
+}
+
+interface LintResult {
+  filesLinted: number;
+  success: boolean;
+}
+```
+
+### Design decisions
+
 - `projectPath` is always explicit — callers handle detection
 - Return typed result objects, not exit codes — adapters translate
-- `recompile` handles the full pipeline internally (changes check, bridge install, orchestration, marker touch)
+- `recompile` internalizes the full pipeline:
+  1. Check for C# changes via marker timestamps
+  2. Call `ensureBridgeInstalled` and capture whether bridge file changed
+  3. Pass `bridgeChangedThisRun` to orchestration logic (controls bootstrap vs direct flow)
+  4. Touch marker file after compilation is attempted (regardless of success/failure)
+- Marker creation, checking, and touching are all internal to `core/recompile.ts` — adapters never deal with markers
+- `lint` converts from `execSync`/`execFileSync` to async `execFile` for non-blocking MCP compatibility
 
 ## MCP Server
 
@@ -74,28 +113,40 @@ Four tools registered:
 | `unity_lint` | Run JetBrains cleanup on changed C# files | `projectPath: string` |
 
 - Stdio transport — Claude Code spawns and manages the process
+- Claude Code sets cwd to the plugin root when spawning MCP servers, so relative paths in `plugin.json` resolve correctly
 - Logger writes to stderr (stdout reserved for JSON-RPC)
 - Returns `isError: true` when compilation fails
-- Stateful: caches project root in memory (stable for session lifetime)
+- Caches detected project root in a module-level variable; `unity_detect_project` sets it, other tools can default to it when called without explicit path (but explicit `projectPath` always wins)
 
 ## Hook Adapter
 
 ```typescript
-// src/hook/index.ts — ~20 lines of glue
-const cwd = /* from stdin JSON or process.cwd() */;
+// src/hook/index.ts
+import { detectProject } from "../core/detect.js";
+import { recompile } from "../core/recompile.js";
+import { lint } from "../core/lint.js";
+import { createFileLogger } from "../lib/logger.js";
+
+// Parse cwd from stdin JSON (Claude hook protocol), fallback to process.cwd()
+const cwd = parseCwdFromStdin();
 const logger = createFileLogger();
 
-const projectPath = await detectProject(cwd);
-if (!projectPath) process.exit(0);
-if (skipMarkerExists(projectPath)) process.exit(0);
+try {
+  const projectPath = detectProject(cwd);
+  if (!projectPath) process.exit(0);
+  if (skipMarkerExists(projectPath)) process.exit(0);
 
-const result = await recompile(projectPath, logger);
-if (result.skipped) process.exit(0);
-if (result.success) { await lint(projectPath, logger); process.exit(0); }
-process.exit(2);
+  const result = await recompile(projectPath, logger);
+  if (result.skipped) process.exit(0);
+  if (result.success) { await lint(projectPath, logger); process.exit(0); }
+  process.exit(2);  // compilation errors
+} catch (err) {
+  logger.error(String(err));
+  process.exit(1);  // unhandled error
+}
 ```
 
-- Same exit code contract: 0 = success/skip, 2 = compilation errors
+- Exit code contract: 0 = success/skip, 1 = unhandled error, 2 = compilation errors
 - Skip marker check is adapter-level policy
 - `hooks.json` and shell wrapper stay, path updated
 
@@ -159,6 +210,7 @@ plugins/unity-mcp/
 └── __tests__/
     ├── core/
     ├── lib/
+    ├── mcp/
     └── integration/
 ```
 
@@ -166,6 +218,7 @@ plugins/unity-mcp/
 
 **Moved:**
 - `src/bridge/`, `src/compile/`, `src/project/` → `src/lib/`
+- `src/config.ts`, `src/logger.ts` → `src/lib/`
 - `src/index.ts` logic → `src/core/` functions + `src/hook/index.ts`
 
 **New:**
