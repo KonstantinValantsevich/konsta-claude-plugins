@@ -1,7 +1,0 @@
-{
-  "name": "unity-recompile",
-  "description": "Automatic Unity recompilation hook for Claude Code. Detects C# file changes and triggers Unity recompilation with error reporting via an IPC bridge. macOS only.",
-  "author": {
-    "name": "Konsta"
-  }
-}

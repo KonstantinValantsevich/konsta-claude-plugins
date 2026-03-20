@@ -1,0 +1,13 @@
+{
+  "name": "unity-mcp",
+  "description": "Unity Editor integration — recompilation, diagnostics, and linting via MCP",
+  "author": {
+    "name": "Konsta"
+  },
+  "mcpServers": {
+    "unity-mcp": {
+      "command": "npx",
+      "args": ["--yes", "tsx", "src/mcp/server.ts"]
+    }
+  }
+}
