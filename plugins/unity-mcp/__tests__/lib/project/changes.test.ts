@@ -6,7 +6,7 @@ import {
   getMarkerPath,
   hasChangedCsFiles,
   touchMarker,
-} from "../../src/project/changes.js";
+} from "../../../src/lib/project/changes.js";
 
 describe("change detection", () => {
   let tmpDir: string;

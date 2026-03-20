@@ -7,8 +7,8 @@ import {
   writeBridgeRequest,
   readBridgeStatus,
   parseBridgeStatusToResult,
-} from "../../src/bridge/ipc.js";
-import type { BridgeStatus } from "../../src/bridge/types.js";
+} from "../../../src/lib/bridge/ipc.js";
+import type { BridgeStatus } from "../../../src/lib/bridge/types.js";
 
 describe("bridge IPC", () => {
   let tmpDir: string;

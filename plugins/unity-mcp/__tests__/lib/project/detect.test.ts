@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { detectUnityProject } from "../../src/project/detect.js";
+import { detectUnityProject } from "../../../src/lib/project/detect.js";
 
 describe("detectUnityProject", () => {
   let tmpDir: string;

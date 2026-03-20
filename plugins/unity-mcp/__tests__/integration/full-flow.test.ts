@@ -2,15 +2,15 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { detectUnityProject } from "../../src/project/detect.js";
+import { detectUnityProject } from "../../src/lib/project/detect.js";
 import {
   ensureMarker,
   getMarkerPath,
   hasChangedCsFiles,
   touchMarker,
-} from "../../src/project/changes.js";
-import { ensureBridgeInstalled } from "../../src/bridge/install.js";
-import { bridgePaths } from "../../src/config.js";
+} from "../../src/lib/project/changes.js";
+import { ensureBridgeInstalled } from "../../src/lib/bridge/install.js";
+import { bridgePaths } from "../../src/lib/config.js";
 
 describe("integration: full flow simulation", () => {
   let tmpDir: string;

@@ -19,7 +19,7 @@ describe("bridge orchestration", () => {
 
   it("bridgeRequestAndWait resolves when status file appears", async () => {
     const { bridgeRequestAndWait } = await import(
-      "../../src/bridge/orchestrate.js"
+      "../../../src/lib/bridge/orchestrate.js"
     );
 
     const ipcDir = path.join(tmpDir, "Library", "ClaudeHookIPC");
@@ -64,7 +64,7 @@ describe("bridge orchestration", () => {
 
   it("bridgeRequestAndWait returns failure on timeout", async () => {
     const { bridgeRequestAndWait } = await import(
-      "../../src/bridge/orchestrate.js"
+      "../../../src/lib/bridge/orchestrate.js"
     );
 
     const result = await bridgeRequestAndWait(tmpDir, "recompile", 1_000);
