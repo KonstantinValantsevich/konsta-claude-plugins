@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { detectUnityProject } from "../../src/lib/project/detect.js";
+import { detectProject } from "../../src/core/detect.js";
 import {
   ensureMarker,
   getMarkerPath,
@@ -42,7 +42,7 @@ describe("integration: full flow simulation", () => {
     const projectPath = path.join(tmpDir, "project");
 
     // 1. Detect project from nested dir
-    const detected = detectUnityProject(
+    const detected = detectProject(
       path.join(projectPath, "Assets", "Scripts"),
     );
     expect(detected).toBe(projectPath);
