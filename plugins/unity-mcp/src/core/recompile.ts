@@ -46,15 +46,22 @@ export async function recompile(
     logger.log("Marker file updated");
   }
 
-  // 5. Convert CompileResult to RecompileResult
-  const errors: CompilationError[] = result.errors.map((errStr) => ({
-    assembly: "",
-    file: "",
-    line: 0,
-    column: 0,
-    message: errStr,
-    type: "error",
-  }));
+  // 5. Convert CompileResult string errors to structured CompilationError
+  // Error strings may be formatted as "file(line,col): message" from the bridge
+  const errors: CompilationError[] = result.errors.map((errStr) => {
+    const match = errStr.match(/^(.+)\((\d+),(\d+)\):\s*(.+)$/);
+    if (match) {
+      return {
+        assembly: "",
+        file: match[1],
+        line: parseInt(match[2], 10),
+        column: parseInt(match[3], 10),
+        message: errStr,
+        type: "error",
+      };
+    }
+    return { assembly: "", file: "", line: 0, column: 0, message: errStr, type: "error" };
+  });
 
   return {
     success: result.success,
