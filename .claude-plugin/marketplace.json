@@ -7,13 +7,13 @@
   },
   "plugins": [
     {
-      "name": "unity-recompile",
-      "description": "Automatic Unity recompilation hook for Claude Code. Detects C# file changes and triggers Unity recompilation with error reporting via an IPC bridge. macOS only.",
+      "name": "unity-mcp",
+      "description": "Unity Editor integration — recompilation, diagnostics, and linting via MCP",
       "version": "1.0.0",
       "author": {
         "name": "Konsta"
       },
-      "source": "./plugins/unity-recompile",
+      "source": "./plugins/unity-mcp",
       "category": "development"
     }
   ]
