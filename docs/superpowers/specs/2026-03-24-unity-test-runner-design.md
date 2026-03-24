@@ -343,7 +343,7 @@ Protocol version remains `1` — the new action is additive, not breaking.
 | `__tests__/lib/project/changes.test.ts` | Generalized markers (multi-purpose) |
 | `__tests__/core/test.test.ts` | Run tests orchestration (mocked bridge) |
 | `__tests__/core/test-results.test.ts` | Filtering, formatting, staleness |
-| `__tests__/mcp/server.test.ts` | Updated: verify 6 tools registered |
+| `__tests__/mcp/server.test.ts` | Updated: verify 5 tools registered |
 
 ---
 
