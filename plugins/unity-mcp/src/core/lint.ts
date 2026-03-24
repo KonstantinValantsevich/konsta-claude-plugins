@@ -20,6 +20,38 @@ const SETTINGS_PATH = path.resolve(
 const noopLogger: Logger = { log() {}, error() {} };
 
 /**
+ * Expand each range by `buffer` lines, clamp to [1, lineCount], merge overlapping/adjacent.
+ * Ranges are [start, end] inclusive, 1-indexed.
+ */
+export function expandAndMerge(
+  ranges: [number, number][],
+  buffer: number,
+  lineCount: number,
+): [number, number][] {
+  if (ranges.length === 0) return [];
+
+  const expanded: [number, number][] = ranges.map(([s, e]) => [
+    Math.max(1, s - buffer),
+    Math.min(lineCount, e + buffer),
+  ]);
+
+  expanded.sort((a, b) => a[0] - b[0]);
+
+  const merged: [number, number][] = [expanded[0]];
+  for (let i = 1; i < expanded.length; i++) {
+    const last = merged[merged.length - 1];
+    const curr = expanded[i];
+    if (curr[0] <= last[1] + 1) {
+      last[1] = Math.max(last[1], curr[1]);
+    } else {
+      merged.push(curr);
+    }
+  }
+
+  return merged;
+}
+
+/**
  * Run jb cleanupcode on changed C# files (async).
  */
 export async function lint(
