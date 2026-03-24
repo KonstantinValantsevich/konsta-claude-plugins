@@ -3,7 +3,7 @@ import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { lint, expandAndMerge, getEditedLineRanges } from "../../src/core/lint.js";
+import { lint, expandAndMerge, getEditedLineRanges, filterHunks } from "../../src/core/lint.js";
 
 describe("expandAndMerge", () => {
   it("expands a single range by buffer", () => {
@@ -120,6 +120,70 @@ describe("getEditedLineRanges", () => {
 
     const ranges = await getEditedLineRanges(tmpDir, file);
     expect(ranges).toEqual([[5, 5]]);
+  });
+});
+
+describe("filterHunks", () => {
+  it("keeps changes within allowed range (same line count)", () => {
+    const original = "line 1\nline 2\nline 3\nline 4\nline 5\n";
+    const linted = "line 1\nFIXED 2\nline 3\nFIXED 4\nline 5\n";
+    // Only allow range around line 2
+    const result = filterHunks(original, linted, [[2, 2]]);
+    expect(result).toBe("line 1\nFIXED 2\nline 3\nline 4\nline 5\n");
+  });
+
+  it("discards changes fully outside allowed range", () => {
+    const original = "line 1\nline 2\nline 3\nline 4\nline 5\n";
+    const linted = "line 1\nline 2\nline 3\nFIXED 4\nline 5\n";
+    // Only allow range around line 2 — change at line 4 is outside
+    const result = filterHunks(original, linted, [[2, 2]]);
+    expect(result).toBe(original);
+  });
+
+  it("handles linted version with more lines (insertion in allowed range)", () => {
+    const original = "line 1\nline 2\nline 3\nline 4\nline 5\n";
+    // Linter inserts a blank line after line 2
+    const linted = "line 1\nline 2\nextra\nline 3\nline 4\nline 5\n";
+    const result = filterHunks(original, linted, [[2, 3]]);
+    expect(result).toBe("line 1\nline 2\nextra\nline 3\nline 4\nline 5\n");
+  });
+
+  it("handles linted version with fewer lines (deletion in allowed range)", () => {
+    const original = "line 1\nline 2\nline 3\nline 4\nline 5\n";
+    // Linter removes line 3
+    const linted = "line 1\nline 2\nline 4\nline 5\n";
+    const result = filterHunks(original, linted, [[2, 4]]);
+    expect(result).toBe("line 1\nline 2\nline 4\nline 5\n");
+  });
+
+  it("preserves lines outside allowed range when insertion shifts them", () => {
+    const original = "A\nB\nC\nD\nE\nF\nG\nH\nI\nJ\n";
+    // Linter inserts 2 lines at position 3, and also changes line 8
+    const linted = "A\nB\nX1\nX2\nC\nD\nE\nF\nG\nHH\nI\nJ\n";
+    // Only allow range [3, 3] — the insertion is allowed, line 8 change is not
+    const result = filterHunks(original, linted, [[3, 3]]);
+    // Insertion at line 3 is kept, but change at original line 8 is discarded
+    expect(result).toBe("A\nB\nX1\nX2\nC\nD\nE\nF\nG\nH\nI\nJ\n");
+  });
+
+  it("returns original when no ranges provided", () => {
+    const original = "line 1\nline 2\n";
+    const linted = "FIXED 1\nFIXED 2\n";
+    const result = filterHunks(original, linted, []);
+    expect(result).toBe(original);
+  });
+
+  it("returns linted when all lines are in range", () => {
+    const original = "line 1\nline 2\n";
+    const linted = "FIXED 1\nFIXED 2\n";
+    const result = filterHunks(original, linted, [[1, 2]]);
+    expect(result).toBe(linted);
+  });
+
+  it("handles identical original and linted", () => {
+    const content = "line 1\nline 2\nline 3\n";
+    const result = filterHunks(content, content, [[1, 3]]);
+    expect(result).toBe(content);
   });
 });
 

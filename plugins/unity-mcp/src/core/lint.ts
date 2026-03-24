@@ -1,3 +1,4 @@
+import { structuredPatch } from "diff";
 import { execFile, exec } from "node:child_process";
 import { promisify } from "node:util";
 import fs from "node:fs";
@@ -128,6 +129,51 @@ export function expandAndMerge(
   }
 
   return merged;
+}
+
+/**
+ * Diff original vs linted, keep only hunks overlapping allowedRanges (original-side positions).
+ * Apply accepted hunks bottom-to-top to avoid offset drift.
+ */
+export function filterHunks(
+  original: string,
+  linted: string,
+  allowedRanges: [number, number][],
+): string {
+  if (allowedRanges.length === 0) return original;
+  if (original === linted) return original;
+
+  const patch = structuredPatch("file", "file", original, linted, "", "", { context: 0 });
+
+  // Determine which hunks overlap any allowed range
+  // Hunk positions are 1-indexed. oldStart/oldLines = original side.
+  const acceptedHunks = patch.hunks.filter((hunk) => {
+    const hunkStart = hunk.oldStart;
+    const hunkEnd = hunk.oldStart + Math.max(hunk.oldLines - 1, 0);
+    return allowedRanges.some(
+      ([rStart, rEnd]) => hunkStart <= rEnd && hunkEnd >= rStart,
+    );
+  });
+
+  if (acceptedHunks.length === 0) return original;
+
+  // Apply accepted hunks bottom-to-top to the original lines
+  const lines = original.split("\n");
+
+  // Sort hunks by oldStart descending for bottom-to-top application
+  const sorted = [...acceptedHunks].sort((a, b) => b.oldStart - a.oldStart);
+
+  for (const hunk of sorted) {
+    const removeStart = hunk.oldStart - 1; // convert to 0-indexed
+    const removeCount = hunk.oldLines;
+    const newLines = hunk.lines
+      .filter((l) => l.startsWith("+") || l.startsWith(" "))
+      .map((l) => l.slice(1));
+
+    lines.splice(removeStart, removeCount, ...newLines);
+  }
+
+  return lines.join("\n");
 }
 
 /**
