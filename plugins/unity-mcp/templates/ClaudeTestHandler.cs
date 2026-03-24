@@ -122,6 +122,191 @@ internal static class ClaudeTestHandler
     internal static void Register()
     {
         ClaudeBridgeBase.RegisterAction("run_tests", HandleRunTests);
+        ClaudeBridgeBase.RegisterAction("list_tests", HandleListTests);
+    }
+
+    private static Filter BuildFilter(TestRunPayload filters)
+    {
+        var filter = new Filter { testMode = TestMode.EditMode };
+        if (filters != null)
+        {
+            if (filters.categoryNames != null && filters.categoryNames.Length > 0)
+                filter.categoryNames = filters.categoryNames;
+            if (filters.groupNames != null && filters.groupNames.Length > 0)
+                filter.groupNames = filters.groupNames;
+            if (filters.assemblyNames != null && filters.assemblyNames.Length > 0)
+                filter.assemblyNames = filters.assemblyNames;
+        }
+        return filter;
+    }
+
+    [Serializable]
+    private class TestListEntry
+    {
+        public string fullName;
+        public string name;
+        public string[] categories;
+        public string assembly;
+    }
+
+    [Serializable]
+    private class TestListPayload
+    {
+        public int totalCount;
+        public int matchedCount;
+        public List<TestListEntry> tests;
+    }
+
+    private static void CollectLeafTests(ITestAdaptor node, List<TestListEntry> results, string currentAssembly = null)
+    {
+        if (node.IsSuite && node.Parent == null && node.Children != null)
+        {
+            foreach (var child in node.Children)
+            {
+                CollectLeafTests(child, results, child.IsSuite ? child.Name : currentAssembly);
+            }
+            return;
+        }
+
+        if (node.IsSuite && node.Children != null)
+        {
+            string assembly = currentAssembly ?? node.Name;
+            foreach (var child in node.Children)
+            {
+                CollectLeafTests(child, results, assembly);
+            }
+            return;
+        }
+
+        if (!node.IsSuite)
+        {
+            var categories = new List<string>();
+            if (node.Categories != null)
+            {
+                foreach (var cat in node.Categories)
+                    categories.Add(cat);
+            }
+
+            results.Add(new TestListEntry
+            {
+                fullName = node.FullName ?? string.Empty,
+                name = node.Name ?? string.Empty,
+                categories = categories.ToArray(),
+                assembly = currentAssembly ?? string.Empty,
+            });
+        }
+    }
+
+    private static List<TestListEntry> FilterTestEntries(List<TestListEntry> tests, TestRunPayload filters)
+    {
+        if (filters == null)
+            return new List<TestListEntry>(tests);
+
+        var result = new List<TestListEntry>();
+        foreach (var test in tests)
+        {
+            bool match = true;
+
+            // categoryNames: OR — test has at least one matching category
+            if (filters.categoryNames != null && filters.categoryNames.Length > 0)
+            {
+                bool catMatch = false;
+                if (test.categories != null)
+                {
+                    foreach (var cat in test.categories)
+                    {
+                        foreach (var filterCat in filters.categoryNames)
+                        {
+                            if (string.Equals(cat, filterCat, StringComparison.Ordinal))
+                            {
+                                catMatch = true;
+                                break;
+                            }
+                        }
+                        if (catMatch) break;
+                    }
+                }
+                if (!catMatch) match = false;
+            }
+
+            // groupNames: OR — fullName matches at least one regex
+            if (match && filters.groupNames != null && filters.groupNames.Length > 0)
+            {
+                bool groupMatch = false;
+                foreach (var pattern in filters.groupNames)
+                {
+                    try
+                    {
+                        if (System.Text.RegularExpressions.Regex.IsMatch(test.fullName, pattern))
+                        {
+                            groupMatch = true;
+                            break;
+                        }
+                    }
+                    catch (Exception) { /* invalid regex — skip */ }
+                }
+                if (!groupMatch) match = false;
+            }
+
+            // assemblyNames: OR — test assembly is in list
+            if (match && filters.assemblyNames != null && filters.assemblyNames.Length > 0)
+            {
+                bool asmMatch = false;
+                foreach (var asm in filters.assemblyNames)
+                {
+                    if (string.Equals(test.assembly, asm, StringComparison.Ordinal))
+                    {
+                        asmMatch = true;
+                        break;
+                    }
+                }
+                if (!asmMatch) match = false;
+            }
+
+            if (match) result.Add(test);
+        }
+
+        return result;
+    }
+
+    private static void HandleListTests(ClaudeBridgeBase.RequestPayload request, long createdAtUnixMs)
+    {
+        ClaudeBridgeBase.MarkBusy(request.requestId);
+        try
+        {
+            TestRunPayload filters = null;
+            if (!string.IsNullOrEmpty(request.payload))
+                filters = JsonUtility.FromJson<TestRunPayload>(request.payload);
+
+            var api = ScriptableObject.CreateInstance<TestRunnerApi>();
+            api.RetrieveTestList(TestMode.EditMode, (testRoot) =>
+            {
+                var allTests = new List<TestListEntry>();
+                CollectLeafTests(testRoot, allTests);
+
+                var matched = FilterTestEntries(allTests, filters);
+
+                var payload = new TestListPayload
+                {
+                    totalCount = allTests.Count,
+                    matchedCount = matched.Count,
+                    tests = matched,
+                };
+
+                ClaudeBridgeBase.WriteStatus(
+                    request, "list_tests_finished", false, true,
+                    matched.Count + " test(s) matched out of " + allTests.Count + " total",
+                    null,
+                    JsonUtility.ToJson(payload, true)
+                );
+                ClaudeBridgeBase.FinalizeRequest(request);
+            });
+        }
+        catch (Exception ex)
+        {
+            ClaudeBridgeBase.WriteStatus(request, "failed", false, false, "List tests failed: " + ex.Message);
+            ClaudeBridgeBase.FinalizeRequest(request);
+        }
     }
 
     private static void HandleRunTests(ClaudeBridgeBase.RequestPayload request, long createdAtUnixMs)
@@ -136,20 +321,7 @@ internal static class ClaudeTestHandler
                 filters = JsonUtility.FromJson<TestRunPayload>(request.payload);
             }
 
-            var filter = new Filter
-            {
-                testMode = TestMode.EditMode,
-            };
-
-            if (filters != null)
-            {
-                if (filters.categoryNames != null && filters.categoryNames.Length > 0)
-                    filter.categoryNames = filters.categoryNames;
-                if (filters.groupNames != null && filters.groupNames.Length > 0)
-                    filter.groupNames = filters.groupNames;
-                if (filters.assemblyNames != null && filters.assemblyNames.Length > 0)
-                    filter.assemblyNames = filters.assemblyNames;
-            }
+            var filter = BuildFilter(filters);
 
             var settings = new ExecutionSettings(filter)
             {
