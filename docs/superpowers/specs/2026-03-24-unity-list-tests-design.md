@@ -129,10 +129,8 @@ private class TestListPayload
     public List<TestListEntry> tests;
 }
 
-internal static void RegisterListTests()
-{
-    ClaudeBridgeBase.RegisterAction("list_tests", HandleListTests);
-}
+// Registered inside the existing Register() method alongside "run_tests":
+//   ClaudeBridgeBase.RegisterAction("list_tests", HandleListTests);
 
 private static void HandleListTests(ClaudeBridgeBase.RequestPayload request, long createdAtUnixMs)
 {
@@ -143,10 +141,9 @@ private static void HandleListTests(ClaudeBridgeBase.RequestPayload request, lon
         if (!string.IsNullOrEmpty(request.payload))
             filters = JsonUtility.FromJson<TestRunPayload>(request.payload);
 
-        var filter = BuildFilter(filters);
-
         var api = ScriptableObject.CreateInstance<TestRunnerApi>();
-        // RetrieveTestList is async via callback
+        // RetrieveTestList is async via callback — callback fires on the main thread
+        // (Unity's TestRunnerApi guarantees main-thread callbacks)
         api.RetrieveTestList(TestMode.EditMode, (testRoot) =>
         {
             var allTests = new List<TestListEntry>();
@@ -179,9 +176,16 @@ private static void HandleListTests(ClaudeBridgeBase.RequestPayload request, lon
 }
 ```
 
-Note: `RetrieveTestList` returns the full test tree. `CollectLeafTests` walks it recursively, collecting non-suite nodes. `FilterTestEntries` applies category/group/assembly matching to mirror what Unity's `Filter` does for execution.
+**`CollectLeafTests`** walks the `ITestAdaptor` tree recursively. For each node: if `IsSuite` is false, it's a leaf test — collect `FullName`, `Name`, `Categories` (from `ITestAdaptor.Categories`), and the assembly name (from the root suite's `Name` or `ITestAdaptor.TypeInfo.Assembly.GetName().Name`). If `IsSuite` is true, recurse into `Children`.
 
-Since `RetrieveTestList` doesn't accept a `Filter` object (only `Execute` does), the list handler must apply filtering manually. The `BuildFilter` method still serves as the canonical definition of filter semantics for `run_tests`, and `FilterTestEntries` mirrors its behavior for listing.
+**`FilterTestEntries`** mirrors what Unity's `Filter` does for execution:
+- `categoryNames`: test matches if it has at least one of the specified categories (OR logic)
+- `groupNames`: test matches if its `fullName` matches at least one regex pattern (OR logic) — same regex semantics as Unity's `Filter.groupNames`
+- `assemblyNames`: test matches if its assembly is in the list (OR logic)
+- When multiple filter types are specified, they combine with AND logic (test must match all specified filter types)
+- When no filters are specified, all tests match
+
+Since `RetrieveTestList` doesn't accept a `Filter` object (only `Execute` does), the list handler must apply filtering manually. `FilterTestEntries` is carefully written to match Unity's `Filter` semantics so that `list_tests` previews match `run_tests` results.
 
 ### Bridge Protocol Changes
 
@@ -193,17 +197,44 @@ Added to the `BridgeRequest.action` union type:
 action: "recompile" | "bootstrap_handshake" | "run_tests" | "list_tests";
 ```
 
+The `payload` field on `BridgeRequest` is renamed from `TestRunPayload` to `TestDiscoveryFilters` — same shape, same JSON wire format, purely a type rename. The C# side is unchanged (it reads `payload` as a `string` and deserializes with `JsonUtility.FromJson`).
+
 #### New status state: `list_tests_finished`
 
 Added to the `BridgeStatus.state` union type.
 
-#### New field on `BridgeStatus`: `testList`
+**Also added to `TERMINAL_STATES` in `src/lib/bridge/ipc.ts`** — without this, `waitForBridgeStatus` would never return the list result.
+
+#### Serialization: reuse `testResults` string field
+
+The C# `StatusPayload` has a `testResults` string field used by `run_tests` to pass JSON. The `list_tests` handler reuses this same field — `WriteStatus` already accepts a `testResultsJson` parameter. The TS `readBridgeStatus` already re-parses `testResults` from a JSON string to an object.
+
+On the TS side, `BridgeStatus` gets a new `testList` field:
 
 ```typescript
 testList?: TestListResult;
 ```
 
-Where:
+The `readBridgeStatus` function is updated to parse `testResults` into `testList` when the state is `list_tests_finished`:
+
+```typescript
+if (typeof raw.testResults === "string" && raw.testResults) {
+  try {
+    const parsed = JSON.parse(raw.testResults as string);
+    if (raw.state === "list_tests_finished") {
+      raw.testList = parsed;
+    } else {
+      raw.testResults = parsed;
+    }
+  } catch {
+    // Leave as-is if parsing fails
+  }
+}
+```
+
+This means: no changes to `ClaudeBridgeBase.StatusPayload` or `WriteStatus` signature in C#. The TS side routes the JSON blob to the correct typed field based on state.
+
+#### New TS types
 
 ```typescript
 export interface TestListEntry {
@@ -298,15 +329,16 @@ Tests are grouped by assembly for readability. Categories shown in brackets afte
 - `src/core/list-tests.ts` — core list tests logic (bridge request + format)
 
 ### Modified files
-- `templates/ClaudeTestHandler.cs` — extract `BuildFilter`, add `HandleListTests` + `CollectLeafTests` + `FilterTestEntries`, register `list_tests` action
+- `templates/ClaudeTestHandler.cs` — extract `BuildFilter`, add `HandleListTests` + `CollectLeafTests` + `FilterTestEntries`, register `list_tests` action in existing `Register()` method
 - `src/lib/bridge/types.ts` — add `TestDiscoveryFilters`, `TestResultFilters`, `TestListEntry`, `TestListResult`; rename `TestRunPayload` to `TestDiscoveryFilters`; add `list_tests` to action union; add `list_tests_finished` to state union; add `testList` to `BridgeStatus`
+- `src/lib/bridge/ipc.ts` — add `list_tests_finished` to `TERMINAL_STATES`; update `readBridgeStatus` to route parsed JSON to `testList` when state is `list_tests_finished`
 - `src/core/types.ts` — add `ListTestsResult` type
 - `src/core/test.ts` — update `RunTestsOptions` to use `TestDiscoveryFilters`; update imports
 - `src/core/test-results.ts` — update `GetTestResultsOptions` to use `TestResultFilters`; update imports
 - `src/mcp/server.ts` — add `unity_list_tests` tool registration; import `listTests`
 
 ### Template version bump
-- Bridge templates remain at version 4 (no base protocol change) but `ClaudeTestHandler.cs` version bumps to 5
+- Bridge templates remain at version 4 (no base protocol change) but `ClaudeTestHandler.cs` version comment bumps to 5 (file-level marker only, does not affect bridge handshake — `BRIDGE_VERSION` in `ClaudeBridgeBase` stays "4")
 
 ## Testing Strategy
 
