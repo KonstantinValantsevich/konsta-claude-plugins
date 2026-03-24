@@ -21,6 +21,15 @@ Add two new MCP tools (`unity_run_tests`, `unity_test_results`) to run Unity tes
 - Synchronous test execution mode
 - Real-time streaming of individual test results during a run
 - Test discovery/listing tool (can be added later)
+- CLI fallback for test runs (batch mode) — tests require the Unity editor running
+
+## Constraints
+
+### Unity Editor Required
+
+Unlike recompile (which has a CLI fallback via `Unity -batchmode`), test execution **requires the Unity editor to be running**. The `TestRunnerApi` lives in the editor domain — it depends on `[InitializeOnLoad]`, the editor update loop, and domain reload. There is no way to run tests through the IPC bridge without an active editor session.
+
+If the editor is not running when `unity_run_tests` is called, the tool should return a clear error: "Unity editor must be running to execute tests." It should NOT attempt to launch Unity in batch mode — Unity's `-runTests` CLI flag exists but uses a completely different execution path (stdout-based NUnit XML output) that bypasses our bridge. Supporting that as a fallback would be a separate feature.
 
 ---
 
@@ -47,6 +56,8 @@ Extracts shared infrastructure from the current `ClaudeRecompileBridge.cs`:
 - `ClaudeTestHandler.cs` — new, test execution via `TestRunnerApi`
 
 All files installed to `Assets/Claude Bridge/Editor/` (renamed from `Assets/Recompile Hook/Editor/`).
+
+The `BRIDGE_CS_FILENAME` constant in `config.ts` is replaced by a `BRIDGE_CS_FILES` array listing all C# files to install: `["ClaudeBridgeBase.cs", "ClaudeRecompileHandler.cs", "ClaudeTestHandler.cs"]`. The install logic iterates over this array.
 
 ### ClaudeTestHandler — C# Implementation
 
@@ -130,10 +141,11 @@ interface TestResult {
 **Flow:**
 
 1. Resolve project path (cached or provided)
-2. Send `run_tests` IPC request with filter payload
-3. Poll for bridge status (500ms interval, 300s timeout — configurable)
-4. On `tests_finished`: generate run ID, add timestamp, touch staleness marker, store full results to disk
-5. Return run ID + formatted results (summary or verbose)
+2. Check Unity editor is running and bridge is ready — return error if not
+3. Send `run_tests` IPC request with filter payload
+4. Poll for bridge status (500ms interval, `TEST_STATUS_TIMEOUT_MS` timeout)
+5. On `tests_finished`: generate run ID, add timestamp, touch staleness marker, store full results to disk
+6. Return run ID + formatted results (summary or verbose)
 
 #### New Tool: `unity_test_results`
 
@@ -225,12 +237,20 @@ interface StoredTestRun {
 **Refactored in:** `src/lib/project/changes.ts`
 
 ```typescript
-/** Touch a marker for the given purpose */
-touchMarker(projectPath: string, purpose: string): void
+/** Get marker path for a given project and purpose */
+getMarkerPath(projectPath: string, purpose: string, markerDir?: string): string
 
-/** Check if any .cs files changed since the marker was last touched */
-hasChangedSince(projectPath: string, purpose: string): Promise<boolean>
+/** Ensure marker exists (epoch mtime on first creation) */
+ensureMarker(markerPath: string): void
+
+/** Touch a marker for the given purpose */
+touchMarker(markerPath: string): void
+
+/** Check if any .cs files changed since the marker was last touched (synchronous, uses execSync) */
+hasChangedSince(projectPath: string, markerPath: string): boolean
 ```
+
+All functions remain synchronous (using `execSync` for `find`), consistent with the existing implementation.
 
 **Marker file path:** `~/.claude/cache/unity-recompile/markers/{purpose}-{md5(projectPath)}`
 
@@ -244,12 +264,19 @@ Recompile's current `hasChanges()` / `touchMarker()` in `changes.ts` are refacto
 
 ### Configuration
 
-**New constants in `src/lib/config.ts`:**
+**New/changed constants in `src/lib/config.ts`:**
 
 ```typescript
 // Test runner
 export const TEST_STATUS_TIMEOUT_MS = 300_000;  // 5 minutes
 export const TEST_STORE_DIR = path.join(CACHE_DIR, "test-runs");
+
+// Bridge file list (replaces BRIDGE_CS_FILENAME)
+export const BRIDGE_CS_FILES = [
+  "ClaudeBridgeBase.cs",
+  "ClaudeRecompileHandler.cs",
+  "ClaudeTestHandler.cs",
+];
 
 // Bridge paths (renamed)
 export const BRIDGE_ASSET_DIR = "Assets/Claude Bridge";
@@ -262,7 +289,7 @@ export const GIT_EXCLUDE_PATTERNS = [
 ];
 ```
 
-The test timeout is a named constant so it can be adjusted in one place.
+**Timeout usage:** `unity_run_tests` polling uses `TEST_STATUS_TIMEOUT_MS` (300s). Recompile continues to use `BRIDGE_STATUS_TIMEOUT_MS` (120s). These are independent — test runs are expected to take longer than recompilation.
 
 ---
 
