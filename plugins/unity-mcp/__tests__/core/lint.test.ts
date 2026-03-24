@@ -206,4 +206,25 @@ describe("lint", () => {
     expect(result.filesLinted).toBe(0);
     expect(result.success).toBe(true);
   });
+
+  it("returns filesLinted=0 when no changed .cs files (with LintOptions)", async () => {
+    const result = await lint(tmpDir, { bufferLines: 5 });
+    expect(result.filesLinted).toBe(0);
+    expect(result.success).toBe(true);
+  });
+
+  it("treats new (untracked) .cs files as full-scope", async () => {
+    // Create a new .cs file that is NOT committed (not in HEAD)
+    const file = path.join(tmpDir, "NewFile.cs");
+    fs.writeFileSync(file, "public class Foo {}\n");
+    // Stage it so git diff HEAD sees it
+    execSync("git add .", { cwd: tmpDir, stdio: "ignore" });
+
+    // getEditedLineRanges should return the whole file as edited
+    const ranges = await getEditedLineRanges(tmpDir, file);
+    expect(ranges.length).toBeGreaterThan(0);
+
+    // The file should NOT be filtered out by the new-file detection
+    // (We can't test full lint() without jb, but we verify the range logic)
+  });
 });

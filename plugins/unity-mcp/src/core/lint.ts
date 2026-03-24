@@ -184,7 +184,8 @@ export async function lint(
   options: LintOptions = {},
 ): Promise<LintResult> {
   const logger = options.logger ?? noopLogger;
-  const _bufferLines = options.bufferLines ?? 3;
+  const bufferLines = options.bufferLines ?? 3;
+
   // Check if jb is available
   try {
     await execAsync("which jb", { timeout: 5_000 });
@@ -222,9 +223,53 @@ export async function lint(
     return { filesLinted: 0, success: true };
   }
 
-  logger.log(`Lint: formatting ${files.length} file(s) with jb cleanupcode`);
+  // Build per-file snapshots and edited ranges (before jb modifies files)
+  const snapshots = new Map<string, string>();
+  const rangesMap = new Map<string, [number, number][]>();
 
-  const args = ["cleanupcode", ...files];
+  for (const filePath of files) {
+    const content = fs.readFileSync(filePath, "utf-8");
+    snapshots.set(filePath, content);
+
+    const ranges = await getEditedLineRanges(projectPath, filePath);
+    if (ranges.length > 0) {
+      const lineCount = content.split("\n").length;
+      rangesMap.set(filePath, expandAndMerge(ranges, bufferLines, lineCount));
+    }
+    // If ranges is empty but file is in changed list, it could be a new file —
+    // no rangesMap entry needed, which means we skip filtering and keep the full jb output.
+  }
+
+  // Filter out files with empty ranges that are NOT new files
+  // (tracked files with only deletions — nothing to lint)
+  const filesToLint: string[] = [];
+  for (const f of files) {
+    const ranges = rangesMap.get(f);
+    if (ranges && ranges.length > 0) {
+      filesToLint.push(f);
+      continue;
+    }
+    // Check if file is new (not in HEAD) — if so, lint the whole thing
+    try {
+      await execAsync(
+        `git -C "${projectPath}" cat-file -e HEAD:"${path.relative(projectPath, f)}"`,
+        { timeout: 5_000 },
+      );
+      // File exists in HEAD but has no new-side ranges — skip it
+    } catch {
+      // File not in HEAD — it's new, lint the whole thing
+      filesToLint.push(f);
+    }
+  }
+
+  if (filesToLint.length === 0) {
+    logger.log("Lint: no files need linting after range analysis, skipping");
+    return { filesLinted: 0, success: true };
+  }
+
+  logger.log(`Lint: formatting ${filesToLint.length} file(s) with jb cleanupcode`);
+
+  const args = ["cleanupcode", ...filesToLint];
   if (fs.existsSync(SETTINGS_PATH)) {
     args.push(`--settings=${SETTINGS_PATH}`);
   }
@@ -237,6 +282,24 @@ export async function lint(
     logger.log("Lint: jb cleanupcode returned non-zero (warnings likely)");
   }
 
+  // Apply selective restore — only keep linter changes within allowed ranges
+  for (const filePath of filesToLint) {
+    const snapshot = snapshots.get(filePath);
+    const ranges = rangesMap.get(filePath);
+
+    // No snapshot means something unexpected — skip
+    if (snapshot === undefined) continue;
+
+    // No ranges means new file — keep full jb output, no filtering needed
+    if (!ranges) continue;
+
+    const linted = fs.readFileSync(filePath, "utf-8");
+    const filtered = filterHunks(snapshot, linted, ranges);
+    if (filtered !== linted) {
+      fs.writeFileSync(filePath, filtered);
+    }
+  }
+
   logger.log("Lint: done");
-  return { filesLinted: files.length, success: true };
+  return { filesLinted: filesToLint.length, success: true };
 }
