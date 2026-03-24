@@ -27,14 +27,14 @@ describe("change detection", () => {
 
   describe("getMarkerPath", () => {
     it("returns a deterministic path based on project path", () => {
-      const p1 = getMarkerPath("/some/project", markerDir);
-      const p2 = getMarkerPath("/some/project", markerDir);
+      const p1 = getMarkerPath("/some/project", "recompile", markerDir);
+      const p2 = getMarkerPath("/some/project", "recompile", markerDir);
       expect(p1).toBe(p2);
     });
 
     it("returns different paths for different projects", () => {
-      const p1 = getMarkerPath("/project/a", markerDir);
-      const p2 = getMarkerPath("/project/b", markerDir);
+      const p1 = getMarkerPath("/project/a", "recompile", markerDir);
+      const p2 = getMarkerPath("/project/b", "recompile", markerDir);
       expect(p1).not.toBe(p2);
     });
   });
@@ -64,6 +64,24 @@ describe("change detection", () => {
       fs.writeFileSync(markerPath, "");
       fs.utimesSync(markerPath, past, past);
       expect(hasChangedCsFiles(tmpDir, markerPath)).toBe(false);
+    });
+  });
+
+  describe("getMarkerPath with purpose", () => {
+    it("returns different paths for different purposes", () => {
+      const p1 = getMarkerPath("/some/project", "recompile", markerDir);
+      const p2 = getMarkerPath("/some/project", "test-run", markerDir);
+      expect(p1).not.toBe(p2);
+    });
+
+    it("includes purpose in marker filename", () => {
+      const p = getMarkerPath("/some/project", "test-run", markerDir);
+      expect(path.basename(p)).toMatch(/^test-run-/);
+    });
+
+    it("is backwards-compatible with recompile purpose", () => {
+      const p = getMarkerPath("/some/project", "recompile", markerDir);
+      expect(path.basename(p)).toMatch(/^recompile-/);
     });
   });
 

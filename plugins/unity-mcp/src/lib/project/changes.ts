@@ -7,10 +7,11 @@ import { MARKER_DIR } from "../config.js";
 /** Get the marker file path for a project (MD5 hash of project path). */
 export function getMarkerPath(
   projectPath: string,
+  purpose: string = "recompile",
   markerDir: string = MARKER_DIR,
 ): string {
   const hash = crypto.createHash("md5").update(projectPath).digest("hex");
-  return path.join(markerDir, `recompile-${hash}`);
+  return path.join(markerDir, `${purpose}-${hash}`);
 }
 
 /**

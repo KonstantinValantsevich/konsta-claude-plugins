@@ -22,7 +22,7 @@ export async function recompile(
 ): Promise<RecompileResult> {
   // 1. Change detection
   fs.mkdirSync(MARKER_DIR, { recursive: true });
-  const markerPath = getMarkerPath(projectPath);
+  const markerPath = getMarkerPath(projectPath, "recompile");
   ensureMarker(markerPath);
 
   if (!hasChangedCsFiles(projectPath, markerPath)) {

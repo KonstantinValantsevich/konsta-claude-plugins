@@ -21027,9 +21027,9 @@ import crypto from "node:crypto";
 import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path2 from "node:path";
-function getMarkerPath(projectPath, markerDir = MARKER_DIR) {
+function getMarkerPath(projectPath, purpose = "recompile", markerDir = MARKER_DIR) {
   const hash = crypto.createHash("md5").update(projectPath).digest("hex");
-  return path2.join(markerDir, `recompile-${hash}`);
+  return path2.join(markerDir, `${purpose}-${hash}`);
 }
 function ensureMarker(markerPath) {
   if (!fs.existsSync(markerPath)) {
@@ -21492,7 +21492,7 @@ var noopLogger = { log() {
 } };
 async function recompile(projectPath, logger = noopLogger) {
   fs7.mkdirSync(MARKER_DIR, { recursive: true });
-  const markerPath = getMarkerPath(projectPath);
+  const markerPath = getMarkerPath(projectPath, "recompile");
   ensureMarker(markerPath);
   if (!hasChangedCsFiles(projectPath, markerPath)) {
     logger.log("No .cs files changed since last check");
