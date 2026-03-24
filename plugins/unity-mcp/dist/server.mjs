@@ -21300,7 +21300,11 @@ function generateRequestId() {
 }
 function writeBridgeRequest(requestFilePath, request) {
   const tmpPath = requestFilePath + ".tmp";
-  fs5.writeFileSync(tmpPath, JSON.stringify(request));
+  const wire = { ...request };
+  if (request.payload && typeof request.payload === "object") {
+    wire.payload = JSON.stringify(request.payload);
+  }
+  fs5.writeFileSync(tmpPath, JSON.stringify(wire));
   fs5.renameSync(tmpPath, requestFilePath);
   const now = /* @__PURE__ */ new Date();
   fs5.utimesSync(requestFilePath, now, now);
@@ -21313,7 +21317,13 @@ function readBridgeStatus(statusPath) {
     const raw = JSON.parse(content);
     if (typeof raw.testResults === "string" && raw.testResults) {
       try {
-        raw.testResults = JSON.parse(raw.testResults);
+        const parsed = JSON.parse(raw.testResults);
+        if (raw.state === "list_tests_finished") {
+          raw.testList = parsed;
+          delete raw.testResults;
+        } else {
+          raw.testResults = parsed;
+        }
       } catch {
       }
     }
@@ -21380,7 +21390,8 @@ var TERMINAL_STATES = /* @__PURE__ */ new Set([
   "bridge_error",
   "busy",
   "timeout",
-  "tests_finished"
+  "tests_finished",
+  "list_tests_finished"
 ]);
 async function waitForBridgeReady(readyPath, projectPath, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
@@ -21658,6 +21669,7 @@ async function lint(projectPath, logger = noopLogger3) {
   if (fs9.existsSync(SETTINGS_PATH)) {
     args.push(`--settings=${SETTINGS_PATH}`);
   }
+  args.push("--profile=Built-in: Full Cleanup");
   args.push("--verbosity=WARN");
   try {
     await execFileAsync("jb", args, { timeout: 12e4 });

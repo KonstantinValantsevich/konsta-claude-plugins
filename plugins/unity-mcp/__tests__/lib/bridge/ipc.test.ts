@@ -77,6 +77,63 @@ describe("bridge IPC", () => {
       fs.writeFileSync(statusPath, JSON.stringify(status));
       expect(readBridgeStatus(statusPath)).toEqual(status);
     });
+
+    it("routes testResults to testList when state is list_tests_finished", () => {
+      const statusPath = path.join(tmpDir, "status-list.json");
+      const testListPayload = {
+        totalCount: 3,
+        matchedCount: 2,
+        tests: [
+          { fullName: "NS.Test1", name: "Test1", categories: ["Cat1"], assembly: "Asm" },
+          { fullName: "NS.Test2", name: "Test2", categories: [], assembly: "Asm" },
+        ],
+      };
+      const raw = {
+        protocolVersion: 1,
+        requestId: "test-list-123",
+        bridgeVersion: "4",
+        projectPath: "/test",
+        state: "list_tests_finished",
+        createdAtUnixMs: Date.now(),
+        updatedAtUnixMs: Date.now(),
+        didCompile: false,
+        isSuccess: true,
+        errors: [],
+        summary: "2 test(s) matched",
+        testResults: JSON.stringify(testListPayload),
+      };
+      fs.writeFileSync(statusPath, JSON.stringify(raw));
+      const status = readBridgeStatus(statusPath);
+      expect(status!.testList).toEqual(testListPayload);
+      expect(status!.testResults).toBeUndefined();
+    });
+
+    it("routes testResults normally for tests_finished state", () => {
+      const statusPath = path.join(tmpDir, "status-run.json");
+      const testResultsPayload = {
+        totalCount: 1, passCount: 1, failCount: 0, skipCount: 0,
+        inconclusiveCount: 0, duration: 0.5,
+        tests: [{ fullName: "NS.T1", name: "T1", status: "Passed", duration: 0.5, message: null, stackTrace: null, output: null }],
+      };
+      const raw = {
+        protocolVersion: 1,
+        requestId: "test-run-456",
+        bridgeVersion: "4",
+        projectPath: "/test",
+        state: "tests_finished",
+        createdAtUnixMs: Date.now(),
+        updatedAtUnixMs: Date.now(),
+        didCompile: false,
+        isSuccess: true,
+        errors: [],
+        summary: "All passed",
+        testResults: JSON.stringify(testResultsPayload),
+      };
+      fs.writeFileSync(statusPath, JSON.stringify(raw));
+      const status = readBridgeStatus(statusPath);
+      expect(status!.testResults).toEqual(testResultsPayload);
+      expect(status!.testList).toBeUndefined();
+    });
   });
 
   describe("parseBridgeStatusToResult", () => {

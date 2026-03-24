@@ -21,7 +21,12 @@ export function writeBridgeRequest(
   request: BridgeRequest,
 ): void {
   const tmpPath = requestFilePath + ".tmp";
-  fs.writeFileSync(tmpPath, JSON.stringify(request));
+  // C# RequestPayload.payload is a string field — pre-serialize nested object
+  const wire: Record<string, unknown> = { ...request };
+  if (request.payload && typeof request.payload === "object") {
+    wire.payload = JSON.stringify(request.payload);
+  }
+  fs.writeFileSync(tmpPath, JSON.stringify(wire));
   fs.renameSync(tmpPath, requestFilePath);
   const now = new Date();
   fs.utimesSync(requestFilePath, now, now);
@@ -37,7 +42,13 @@ export function readBridgeStatus(statusPath: string): BridgeStatus | null {
     const raw = JSON.parse(content) as Record<string, unknown>;
     if (typeof raw.testResults === "string" && raw.testResults) {
       try {
-        raw.testResults = JSON.parse(raw.testResults as string);
+        const parsed = JSON.parse(raw.testResults as string);
+        if (raw.state === "list_tests_finished") {
+          raw.testList = parsed;
+          delete raw.testResults;
+        } else {
+          raw.testResults = parsed;
+        }
       } catch {
         // Leave as-is if parsing fails
       }
@@ -127,6 +138,7 @@ const TERMINAL_STATES = new Set([
   "busy",
   "timeout",
   "tests_finished",
+  "list_tests_finished",
 ]);
 
 /**
