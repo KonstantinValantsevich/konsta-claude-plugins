@@ -22,9 +22,6 @@ export interface TestResultFilters {
   nameFilter?: string;
 }
 
-/** @deprecated Use TestDiscoveryFilters */
-export type TestRunPayload = TestDiscoveryFilters;
-
 export interface CompileError {
   assembly: string;
   file: string;
