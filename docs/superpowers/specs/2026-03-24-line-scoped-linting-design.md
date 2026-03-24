@@ -47,9 +47,9 @@ All changes stay within `src/core/lint.ts`. Three internal helpers:
 
 - **`getEditedLineRanges(projectPath, filePath)`** — runs `git diff HEAD -- <file>`, parses `@@ +c,d @@` hunk headers, returns `[start, end][]` ranges (1-indexed, new-file side). Handles omitted counts (`+c` = single line). Pure deletion hunks (no new-file-side lines) are ignored since there are no lines to lint.
 - **`expandAndMerge(ranges, buffer, lineCount)`** — expands each range by `buffer` lines, clamps to `[1, lineCount]`, sorts, merges overlapping/adjacent ranges.
-- **`filterHunks(original, linted, allowedRanges)`** — computes a line-based diff between original and linted content. Each diff hunk that overlaps any allowed range is accepted; others are discarded. Returns the merged content with only accepted hunks applied.
+- **`filterHunks(original, linted, allowedRanges)`** — computes a line-based diff between original and linted content. Overlap is checked against the original-side (snapshot) line positions of each diff hunk, which correspond to the same coordinate space as the allowed ranges. Each diff hunk that overlaps any allowed range is accepted; others are discarded. When a single diff hunk partially overlaps an allowed range, the entire hunk is accepted — this may include some changes outside the buffer, but only when `jb` treats them as part of a contiguous change. Accepted hunks are applied bottom-to-top (highest line numbers first) to avoid offset drift. Returns the merged content.
 
-For the diff algorithm in `filterHunks`: use a simple longest-common-subsequence (LCS) diff or a lightweight npm package. The diff operates on string arrays (lines), not characters. The output is a list of change hunks with original/linted line positions, which we filter by allowed ranges and apply.
+For the diff algorithm in `filterHunks`: use the `diff` npm package (`structuredPatch` or `diffArrays`). The diff operates on string arrays (lines), not characters. The output is a list of change hunks with original/linted line positions, which we filter by allowed ranges and apply.
 
 Main `lint()` function changes:
 1. Accept `LintOptions` instead of bare `Logger`
@@ -61,7 +61,8 @@ Main `lint()` function changes:
 
 ## Edge Cases
 
-- **Empty diff for a tracked file** — `getEditedLineRanges` returns `[]`, `filterHunks` discards all linter changes. Could short-circuit by skipping `jb` for that file entirely.
+- **Empty diff for a tracked file** — `getEditedLineRanges` returns `[]`. Skip `jb` for that file entirely to avoid a pointless 120s invocation.
+- **`lineCount` source** — derived from the snapshot: `snapshot.split('\n').length`.
 - **Buffer clamping** — `expandAndMerge` clamps start to >= 1 and end to <= lineCount to avoid out-of-bounds ranges.
 - **Hunk header variants** — `+c` (no comma) = single line, `+0,0` = empty file. Both handled in parsing.
 
@@ -71,7 +72,7 @@ Extend `__tests__/core/lint.test.ts`:
 
 - **`getEditedLineRanges`** — create file, commit, modify specific lines, verify returned ranges. Include: single-line additions (`+c` without `,d`), multi-line hunks, pure deletion hunks (should return no new-side ranges).
 - **`expandAndMerge`** — pure function: overlapping ranges, adjacent ranges after expansion, buffer clamping at line 1 and line N, single-line range, fully overlapping ranges.
-- **`filterHunks`** — cases where linted version has same line count, more lines, and fewer lines than original. Verify only hunks within allowed ranges are kept. Include a case where a linter insertion inside an allowed range shifts subsequent lines — verify lines outside the range are unaffected.
+- **`filterHunks`** — cases where linted version has same line count, more lines, and fewer lines than original. Verify only hunks within allowed ranges are kept. Include a case where a linter insertion inside an allowed range shifts subsequent lines — verify lines outside the range are unaffected. Include a case where a hunk is fully outside the allowed range and is discarded.
 - **New file path** — create untracked `.cs` file, run lint, verify entire file is treated as in-scope.
 - **Integration** — mock `jb` or skip if unavailable, verify only lines near the edit are changed.
 
