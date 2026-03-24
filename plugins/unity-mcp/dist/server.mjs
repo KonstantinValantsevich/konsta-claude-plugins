@@ -21004,7 +21004,6 @@ var TEST_STORE_DIR = path.join(CACHE_DIR, "test-runs");
 var BRIDGE_ASSET_DIR = "Assets/Claude Bridge";
 var BRIDGE_EDITOR_DIR = "Assets/Claude Bridge/Editor";
 var BRIDGE_CS_FILES = [
-  "ClaudeRecompileBridge.cs",
   "ClaudeBridgeBase.cs",
   "ClaudeRecompileHandler.cs",
   "ClaudeTestHandler.cs"

@@ -22,7 +22,6 @@ export const TEST_STORE_DIR = path.join(CACHE_DIR, "test-runs");
 export const BRIDGE_ASSET_DIR = "Assets/Claude Bridge";
 export const BRIDGE_EDITOR_DIR = "Assets/Claude Bridge/Editor";
 export const BRIDGE_CS_FILES = [
-  "ClaudeRecompileBridge.cs",
   "ClaudeBridgeBase.cs",
   "ClaudeRecompileHandler.cs",
   "ClaudeTestHandler.cs",
