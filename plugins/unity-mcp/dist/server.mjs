@@ -6784,12 +6784,12 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats(ajv, list, fs12, exportName) {
+    function addFormats(ajv, list, fs13, exportName) {
       var _a;
       var _b;
       (_a = (_b = ajv.opts.code).formats) !== null && _a !== void 0 ? _a : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list)
-        ajv.addFormat(f, fs12[f]);
+        ajv.addFormat(f, fs13[f]);
     }
     module.exports = exports = formatsPlugin;
     Object.defineProperty(exports, "__esModule", { value: true });
@@ -21838,6 +21838,97 @@ async function runTests(opts) {
   return { runId, formatted: view.formatted };
 }
 
+// src/core/list-tests.ts
+import fs12 from "node:fs";
+var noopLogger5 = { log() {
+}, error() {
+} };
+async function listTests(opts) {
+  const logger = opts.logger ?? noopLogger5;
+  const projectPath = opts.projectPath;
+  const empty = { formatted: "", totalCount: 0, matchedCount: 0 };
+  if (!unityIsRunning(projectPath)) {
+    return { ...empty, formatted: "Unity editor must be running to list tests." };
+  }
+  const paths = bridgePaths(projectPath);
+  if (!bridgeReadyMatchesProject(paths.readyFile, projectPath)) {
+    return { ...empty, formatted: "Bridge is not ready. Run unity_recompile first to initialize the bridge." };
+  }
+  const requestId = generateRequestId();
+  const statusPath = paths.statusFile(requestId);
+  try {
+    fs12.unlinkSync(statusPath);
+  } catch {
+  }
+  const payload = {};
+  if (opts.categoryNames?.length) payload.categoryNames = opts.categoryNames;
+  if (opts.groupNames?.length) payload.groupNames = opts.groupNames;
+  if (opts.assemblyNames?.length) payload.assemblyNames = opts.assemblyNames;
+  const request = {
+    protocolVersion: BRIDGE_PROTOCOL_VERSION,
+    requestId,
+    requestedAtUnixMs: Date.now(),
+    projectPath,
+    action: "list_tests",
+    reason: "unity_list_tests MCP tool",
+    source: "unity-mcp",
+    payload
+  };
+  fs12.mkdirSync(paths.ipcDir, { recursive: true });
+  writeBridgeRequest(paths.requestFile, request);
+  logger.log("Sent list_tests request: " + requestId);
+  const status = await waitForBridgeStatus(statusPath, requestId, TEST_STATUS_TIMEOUT_MS);
+  if (!status) {
+    return { ...empty, formatted: "Timed out waiting for test list (300s)." };
+  }
+  if (status.state === "failed" || status.state === "bridge_error") {
+    return { ...empty, formatted: "List tests failed: " + (status.summary || "unknown error") };
+  }
+  if (!status.testList) {
+    return { ...empty, formatted: "Bridge returned no test list." };
+  }
+  const { totalCount, matchedCount, tests } = status.testList;
+  return {
+    formatted: formatTestList(tests, totalCount, matchedCount, payload),
+    totalCount,
+    matchedCount
+  };
+}
+function formatTestList(tests, totalCount, matchedCount, filters) {
+  if (totalCount === 0) {
+    return "No EditMode tests found.";
+  }
+  const hasFilters = !!(filters.categoryNames?.length || filters.groupNames?.length || filters.assemblyNames?.length);
+  if (matchedCount === 0 && hasFilters) {
+    return `No EditMode tests matched the filter (${totalCount} total).`;
+  }
+  const lines = [];
+  if (hasFilters) {
+    const filterParts = [];
+    if (filters.categoryNames?.length) filterParts.push(`categoryNames=${JSON.stringify(filters.categoryNames)}`);
+    if (filters.groupNames?.length) filterParts.push(`groupNames=${JSON.stringify(filters.groupNames)}`);
+    if (filters.assemblyNames?.length) filterParts.push(`assemblyNames=${JSON.stringify(filters.assemblyNames)}`);
+    lines.push(`Matched ${matchedCount} of ${totalCount} EditMode tests (filter: ${filterParts.join(", ")}):`);
+  } else {
+    lines.push(`Available EditMode tests (${totalCount} total):`);
+  }
+  const byAssembly = /* @__PURE__ */ new Map();
+  for (const test of tests) {
+    const group = byAssembly.get(test.assembly) ?? [];
+    group.push(test);
+    byAssembly.set(test.assembly, group);
+  }
+  for (const [assembly, assemblyTests] of byAssembly) {
+    lines.push("");
+    lines.push(`  ${assembly}`);
+    for (const t of assemblyTests) {
+      const cats = t.categories.length > 0 ? ` [${t.categories.join(", ")}]` : "";
+      lines.push(`    ${t.fullName}${cats}`);
+    }
+  }
+  return lines.join("\n");
+}
+
 // src/mcp/server.ts
 import { fileURLToPath as fileURLToPath3 } from "node:url";
 import nodePath from "node:path";
@@ -21932,6 +22023,22 @@ ${errorText}` }],
       return {
         content: [{ type: "text", text: result.formatted }],
         isError: !result.runId
+      };
+    }
+  );
+  server.tool(
+    "unity_list_tests",
+    "List available Unity EditMode tests. Returns test names, categories, and assemblies. Supports filtering by category, class/namespace (regex), and assembly \u2014 use to preview which tests a filter matches before running.",
+    {
+      projectPath: external_exports.string().describe("Unity project root path"),
+      categoryNames: external_exports.array(external_exports.string()).optional().describe("NUnit [Category] tags to filter by"),
+      groupNames: external_exports.array(external_exports.string()).optional().describe("Regex patterns for namespace/class/test name filtering"),
+      assemblyNames: external_exports.array(external_exports.string()).optional().describe("Assembly names to filter (without .dll)")
+    },
+    async ({ projectPath, categoryNames, groupNames, assemblyNames }) => {
+      const result = await listTests({ projectPath, categoryNames, groupNames, assemblyNames, logger: stderrLogger });
+      return {
+        content: [{ type: "text", text: result.formatted }]
       };
     }
   );
