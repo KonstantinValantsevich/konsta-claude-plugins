@@ -34,6 +34,11 @@ export interface LintResult {
   success: boolean;
 }
 
+export interface LintOptions {
+  logger?: Logger;
+  bufferLines?: number;
+}
+
 export interface StoredTestRun {
   runId: string;
   timestamp: string;

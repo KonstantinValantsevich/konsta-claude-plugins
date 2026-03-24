@@ -3,7 +3,7 @@ import { promisify } from "node:util";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { Logger, LintResult } from "./types.js";
+import type { Logger, LintResult, LintOptions } from "./types.js";
 
 const execFileAsync = promisify(execFile);
 const execAsync = promisify(exec);
@@ -24,8 +24,10 @@ const noopLogger: Logger = { log() {}, error() {} };
  */
 export async function lint(
   projectPath: string,
-  logger: Logger = noopLogger,
+  options: LintOptions = {},
 ): Promise<LintResult> {
+  const logger = options.logger ?? noopLogger;
+  const _bufferLines = options.bufferLines ?? 3;
   // Check if jb is available
   try {
     await execAsync("which jb", { timeout: 5_000 });

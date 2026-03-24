@@ -53,7 +53,7 @@ async function main(): Promise<void> {
   if (result.success) {
     logger.log("SUCCESS: Unity recompilation complete");
     process.stderr.write("Unity compiled successfully\n");
-    await lint(projectPath, logger);
+    await lint(projectPath, { logger });
     process.exit(0);
   }
 

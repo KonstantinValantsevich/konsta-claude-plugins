@@ -21637,7 +21637,9 @@ var SETTINGS_PATH = path7.resolve(
 var noopLogger3 = { log() {
 }, error() {
 } };
-async function lint(projectPath, logger = noopLogger3) {
+async function lint(projectPath, options = {}) {
+  const logger = options.logger ?? noopLogger3;
+  const _bufferLines = options.bufferLines ?? 3;
   try {
     await execAsync("which jb", { timeout: 5e3 });
   } catch {
@@ -21992,7 +21994,7 @@ ${errorText}` }],
     "Run JetBrains cleanup code on changed C# files in the Unity project.",
     { projectPath: external_exports.string().describe("Unity project root path") },
     async ({ projectPath }) => {
-      const result = await lint(projectPath, stderrLogger);
+      const result = await lint(projectPath, { logger: stderrLogger });
       return {
         content: [{
           type: "text",

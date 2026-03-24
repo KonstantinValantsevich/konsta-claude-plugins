@@ -73,7 +73,7 @@ export function createServer(): McpServer {
     "Run JetBrains cleanup code on changed C# files in the Unity project.",
     { projectPath: z.string().describe("Unity project root path") },
     async ({ projectPath }) => {
-      const result = await lint(projectPath, stderrLogger);
+      const result = await lint(projectPath, { logger: stderrLogger });
       return {
         content: [{
           type: "text" as const,
