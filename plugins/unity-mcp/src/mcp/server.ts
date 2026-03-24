@@ -6,6 +6,7 @@ import { getStatus } from "../core/status.js";
 import { lint } from "../core/lint.js";
 import { runTests } from "../core/test.js";
 import { getTestResults } from "../core/test-results.js";
+import { listTests } from "../core/list-tests.js";
 import type { Logger } from "../core/types.js";
 import { fileURLToPath } from "node:url";
 import nodePath from "node:path";
@@ -107,6 +108,23 @@ export function createServer(): McpServer {
       return {
         content: [{ type: "text" as const, text: result.formatted }],
         isError: !result.runId,
+      };
+    },
+  );
+
+  server.tool(
+    "unity_list_tests",
+    "List available Unity EditMode tests. Returns test names, categories, and assemblies. Supports filtering by category, class/namespace (regex), and assembly — use to preview which tests a filter matches before running.",
+    {
+      projectPath: z.string().describe("Unity project root path"),
+      categoryNames: z.array(z.string()).optional().describe("NUnit [Category] tags to filter by"),
+      groupNames: z.array(z.string()).optional().describe("Regex patterns for namespace/class/test name filtering"),
+      assemblyNames: z.array(z.string()).optional().describe("Assembly names to filter (without .dll)"),
+    },
+    async ({ projectPath, categoryNames, groupNames, assemblyNames }) => {
+      const result = await listTests({ projectPath, categoryNames, groupNames, assemblyNames, logger: stderrLogger });
+      return {
+        content: [{ type: "text" as const, text: result.formatted }],
       };
     },
   );
