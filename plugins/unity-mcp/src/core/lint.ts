@@ -20,6 +20,85 @@ const SETTINGS_PATH = path.resolve(
 const noopLogger: Logger = { log() {}, error() {} };
 
 /**
+ * Parse `git diff HEAD -- <file>` to get edited line ranges on the new-file side.
+ * Returns [start, end][] (1-indexed, inclusive). Pure deletion hunks are ignored.
+ */
+export async function getEditedLineRanges(
+  projectPath: string,
+  filePath: string,
+): Promise<[number, number][]> {
+  let stdout: string;
+  try {
+    const result = await execAsync(
+      `git -C "${projectPath}" diff HEAD -- "${filePath}"`,
+      { timeout: 10_000 },
+    );
+    stdout = result.stdout;
+  } catch {
+    return [];
+  }
+
+  if (!stdout) return [];
+
+  const ranges: [number, number][] = [];
+  const lines = stdout.split("\n");
+  const hunkHeaderRe = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/;
+
+  let newLineNum = 0;
+  let runStart: number | null = null;
+  let runEnd: number | null = null;
+
+  const flushRun = () => {
+    if (runStart !== null && runEnd !== null) {
+      ranges.push([runStart, runEnd]);
+      runStart = null;
+      runEnd = null;
+    }
+  };
+
+  for (const line of lines) {
+    const hunkMatch = hunkHeaderRe.exec(line);
+    if (hunkMatch) {
+      flushRun();
+      const count = hunkMatch[2] !== undefined ? parseInt(hunkMatch[2], 10) : 1;
+      // Pure deletion hunk: skip it entirely, new-side line counter doesn't advance
+      if (count === 0) {
+        newLineNum = -1; // sentinel: skip lines until next hunk
+      } else {
+        newLineNum = parseInt(hunkMatch[1], 10);
+      }
+      continue;
+    }
+
+    if (newLineNum === -1) continue; // inside a pure-deletion hunk
+
+    if (line.startsWith("+++") || line.startsWith("---")) {
+      // File header lines — skip, don't affect line counting
+      continue;
+    } else if (line.startsWith("+")) {
+      // Added line on new side
+      if (runStart === null) {
+        runStart = newLineNum;
+      }
+      runEnd = newLineNum;
+      newLineNum++;
+    } else if (line.startsWith("-")) {
+      // Deleted line: doesn't advance new-side counter
+      flushRun();
+    } else if (line.startsWith(" ") || line.startsWith("\\")) {
+      // Context line or "No newline at end of file"
+      flushRun();
+      if (line.startsWith(" ")) {
+        newLineNum++;
+      }
+    }
+  }
+
+  flushRun();
+  return ranges;
+}
+
+/**
  * Expand each range by `buffer` lines, clamp to [1, lineCount], merge overlapping/adjacent.
  * Ranges are [start, end] inclusive, 1-indexed.
  */

@@ -3,7 +3,7 @@ import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { lint, expandAndMerge } from "../../src/core/lint.js";
+import { lint, expandAndMerge, getEditedLineRanges } from "../../src/core/lint.js";
 
 describe("expandAndMerge", () => {
   it("expands a single range by buffer", () => {
@@ -48,6 +48,78 @@ describe("expandAndMerge", () => {
 
   it("sorts unsorted input ranges", () => {
     expect(expandAndMerge([[20, 22], [5, 7]], 3, 100)).toEqual([[2, 10], [17, 25]]);
+  });
+});
+
+describe("getEditedLineRanges", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "unity-lint-ranges-"));
+    execSync("git init", { cwd: tmpDir, stdio: "ignore" });
+    execSync("git commit --allow-empty -m 'init'", { cwd: tmpDir, stdio: "ignore" });
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("returns ranges for modified lines", async () => {
+    const file = path.join(tmpDir, "Test.cs");
+    const original = Array.from({ length: 10 }, (_, i) => `line ${i + 1}`).join("\n");
+    fs.writeFileSync(file, original);
+    execSync("git add . && git commit -m 'add file'", { cwd: tmpDir, stdio: "ignore" });
+
+    const lines = original.split("\n");
+    lines[2] = "modified line 3";
+    lines[6] = "modified line 7";
+    fs.writeFileSync(file, lines.join("\n"));
+
+    const ranges = await getEditedLineRanges(tmpDir, file);
+    expect(ranges).toEqual([[3, 3], [7, 7]]);
+  });
+
+  it("returns range for multi-line addition", async () => {
+    const file = path.join(tmpDir, "Test.cs");
+    const original = "line 1\nline 2\nline 3\n";
+    fs.writeFileSync(file, original);
+    execSync("git add . && git commit -m 'add file'", { cwd: tmpDir, stdio: "ignore" });
+
+    fs.writeFileSync(file, "line 1\nnew A\nnew B\nline 2\nline 3\n");
+
+    const ranges = await getEditedLineRanges(tmpDir, file);
+    expect(ranges).toEqual([[2, 3]]);
+  });
+
+  it("ignores pure deletion hunks (no new-side lines)", async () => {
+    const file = path.join(tmpDir, "Test.cs");
+    fs.writeFileSync(file, "line 1\nline 2\nline 3\n");
+    execSync("git add . && git commit -m 'add file'", { cwd: tmpDir, stdio: "ignore" });
+
+    fs.writeFileSync(file, "line 1\nline 3\n");
+
+    const ranges = await getEditedLineRanges(tmpDir, file);
+    expect(ranges).toEqual([]);
+  });
+
+  it("returns empty for a file with no changes", async () => {
+    const file = path.join(tmpDir, "Test.cs");
+    fs.writeFileSync(file, "line 1\n");
+    execSync("git add . && git commit -m 'add file'", { cwd: tmpDir, stdio: "ignore" });
+
+    const ranges = await getEditedLineRanges(tmpDir, file);
+    expect(ranges).toEqual([]);
+  });
+
+  it("handles single-line hunk header without count", async () => {
+    const file = path.join(tmpDir, "Test.cs");
+    fs.writeFileSync(file, "a\nb\nc\nd\ne\nf\ng\nh\ni\nj\n");
+    execSync("git add . && git commit -m 'add file'", { cwd: tmpDir, stdio: "ignore" });
+
+    fs.writeFileSync(file, "a\nb\nc\nd\nX\nf\ng\nh\ni\nj\n");
+
+    const ranges = await getEditedLineRanges(tmpDir, file);
+    expect(ranges).toEqual([[5, 5]]);
   });
 });
 
