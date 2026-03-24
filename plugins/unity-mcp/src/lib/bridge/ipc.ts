@@ -33,7 +33,16 @@ export function readBridgeStatus(statusPath: string): BridgeStatus | null {
   try {
     if (!fs.existsSync(statusPath)) return null;
     const content = fs.readFileSync(statusPath, "utf-8");
-    return JSON.parse(content) as BridgeStatus;
+    // Parse with loose typing first since C# bridge may serialize testResults as a JSON string
+    const raw = JSON.parse(content) as Record<string, unknown>;
+    if (typeof raw.testResults === "string" && raw.testResults) {
+      try {
+        raw.testResults = JSON.parse(raw.testResults as string);
+      } catch {
+        // Leave as-is if parsing fails
+      }
+    }
+    return raw as unknown as BridgeStatus;
   } catch {
     return null;
   }
@@ -117,6 +126,7 @@ const TERMINAL_STATES = new Set([
   "bridge_error",
   "busy",
   "timeout",
+  "tests_finished",
 ]);
 
 /**
