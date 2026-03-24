@@ -21618,6 +21618,374 @@ async function getStatus(projectPath, logger = noopLogger2) {
   };
 }
 
+// node_modules/diff/libesm/diff/base.js
+var Diff = class {
+  diff(oldStr, newStr, options = {}) {
+    let callback;
+    if (typeof options === "function") {
+      callback = options;
+      options = {};
+    } else if ("callback" in options) {
+      callback = options.callback;
+    }
+    const oldString = this.castInput(oldStr, options);
+    const newString = this.castInput(newStr, options);
+    const oldTokens = this.removeEmpty(this.tokenize(oldString, options));
+    const newTokens = this.removeEmpty(this.tokenize(newString, options));
+    return this.diffWithOptionsObj(oldTokens, newTokens, options, callback);
+  }
+  diffWithOptionsObj(oldTokens, newTokens, options, callback) {
+    var _a;
+    const done = (value) => {
+      value = this.postProcess(value, options);
+      if (callback) {
+        setTimeout(function() {
+          callback(value);
+        }, 0);
+        return void 0;
+      } else {
+        return value;
+      }
+    };
+    const newLen = newTokens.length, oldLen = oldTokens.length;
+    let editLength = 1;
+    let maxEditLength = newLen + oldLen;
+    if (options.maxEditLength != null) {
+      maxEditLength = Math.min(maxEditLength, options.maxEditLength);
+    }
+    const maxExecutionTime = (_a = options.timeout) !== null && _a !== void 0 ? _a : Infinity;
+    const abortAfterTimestamp = Date.now() + maxExecutionTime;
+    const bestPath = [{ oldPos: -1, lastComponent: void 0 }];
+    let newPos = this.extractCommon(bestPath[0], newTokens, oldTokens, 0, options);
+    if (bestPath[0].oldPos + 1 >= oldLen && newPos + 1 >= newLen) {
+      return done(this.buildValues(bestPath[0].lastComponent, newTokens, oldTokens));
+    }
+    let minDiagonalToConsider = -Infinity, maxDiagonalToConsider = Infinity;
+    const execEditLength = () => {
+      for (let diagonalPath = Math.max(minDiagonalToConsider, -editLength); diagonalPath <= Math.min(maxDiagonalToConsider, editLength); diagonalPath += 2) {
+        let basePath;
+        const removePath = bestPath[diagonalPath - 1], addPath = bestPath[diagonalPath + 1];
+        if (removePath) {
+          bestPath[diagonalPath - 1] = void 0;
+        }
+        let canAdd = false;
+        if (addPath) {
+          const addPathNewPos = addPath.oldPos - diagonalPath;
+          canAdd = addPath && 0 <= addPathNewPos && addPathNewPos < newLen;
+        }
+        const canRemove = removePath && removePath.oldPos + 1 < oldLen;
+        if (!canAdd && !canRemove) {
+          bestPath[diagonalPath] = void 0;
+          continue;
+        }
+        if (!canRemove || canAdd && removePath.oldPos < addPath.oldPos) {
+          basePath = this.addToPath(addPath, true, false, 0, options);
+        } else {
+          basePath = this.addToPath(removePath, false, true, 1, options);
+        }
+        newPos = this.extractCommon(basePath, newTokens, oldTokens, diagonalPath, options);
+        if (basePath.oldPos + 1 >= oldLen && newPos + 1 >= newLen) {
+          return done(this.buildValues(basePath.lastComponent, newTokens, oldTokens)) || true;
+        } else {
+          bestPath[diagonalPath] = basePath;
+          if (basePath.oldPos + 1 >= oldLen) {
+            maxDiagonalToConsider = Math.min(maxDiagonalToConsider, diagonalPath - 1);
+          }
+          if (newPos + 1 >= newLen) {
+            minDiagonalToConsider = Math.max(minDiagonalToConsider, diagonalPath + 1);
+          }
+        }
+      }
+      editLength++;
+    };
+    if (callback) {
+      (function exec2() {
+        setTimeout(function() {
+          if (editLength > maxEditLength || Date.now() > abortAfterTimestamp) {
+            return callback(void 0);
+          }
+          if (!execEditLength()) {
+            exec2();
+          }
+        }, 0);
+      })();
+    } else {
+      while (editLength <= maxEditLength && Date.now() <= abortAfterTimestamp) {
+        const ret = execEditLength();
+        if (ret) {
+          return ret;
+        }
+      }
+    }
+  }
+  addToPath(path9, added, removed, oldPosInc, options) {
+    const last = path9.lastComponent;
+    if (last && !options.oneChangePerToken && last.added === added && last.removed === removed) {
+      return {
+        oldPos: path9.oldPos + oldPosInc,
+        lastComponent: { count: last.count + 1, added, removed, previousComponent: last.previousComponent }
+      };
+    } else {
+      return {
+        oldPos: path9.oldPos + oldPosInc,
+        lastComponent: { count: 1, added, removed, previousComponent: last }
+      };
+    }
+  }
+  extractCommon(basePath, newTokens, oldTokens, diagonalPath, options) {
+    const newLen = newTokens.length, oldLen = oldTokens.length;
+    let oldPos = basePath.oldPos, newPos = oldPos - diagonalPath, commonCount = 0;
+    while (newPos + 1 < newLen && oldPos + 1 < oldLen && this.equals(oldTokens[oldPos + 1], newTokens[newPos + 1], options)) {
+      newPos++;
+      oldPos++;
+      commonCount++;
+      if (options.oneChangePerToken) {
+        basePath.lastComponent = { count: 1, previousComponent: basePath.lastComponent, added: false, removed: false };
+      }
+    }
+    if (commonCount && !options.oneChangePerToken) {
+      basePath.lastComponent = { count: commonCount, previousComponent: basePath.lastComponent, added: false, removed: false };
+    }
+    basePath.oldPos = oldPos;
+    return newPos;
+  }
+  equals(left, right, options) {
+    if (options.comparator) {
+      return options.comparator(left, right);
+    } else {
+      return left === right || !!options.ignoreCase && left.toLowerCase() === right.toLowerCase();
+    }
+  }
+  removeEmpty(array2) {
+    const ret = [];
+    for (let i = 0; i < array2.length; i++) {
+      if (array2[i]) {
+        ret.push(array2[i]);
+      }
+    }
+    return ret;
+  }
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  castInput(value, options) {
+    return value;
+  }
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  tokenize(value, options) {
+    return Array.from(value);
+  }
+  join(chars) {
+    return chars.join("");
+  }
+  postProcess(changeObjects, options) {
+    return changeObjects;
+  }
+  get useLongestToken() {
+    return false;
+  }
+  buildValues(lastComponent, newTokens, oldTokens) {
+    const components = [];
+    let nextComponent;
+    while (lastComponent) {
+      components.push(lastComponent);
+      nextComponent = lastComponent.previousComponent;
+      delete lastComponent.previousComponent;
+      lastComponent = nextComponent;
+    }
+    components.reverse();
+    const componentLen = components.length;
+    let componentPos = 0, newPos = 0, oldPos = 0;
+    for (; componentPos < componentLen; componentPos++) {
+      const component = components[componentPos];
+      if (!component.removed) {
+        if (!component.added && this.useLongestToken) {
+          let value = newTokens.slice(newPos, newPos + component.count);
+          value = value.map(function(value2, i) {
+            const oldValue = oldTokens[oldPos + i];
+            return oldValue.length > value2.length ? oldValue : value2;
+          });
+          component.value = this.join(value);
+        } else {
+          component.value = this.join(newTokens.slice(newPos, newPos + component.count));
+        }
+        newPos += component.count;
+        if (!component.added) {
+          oldPos += component.count;
+        }
+      } else {
+        component.value = this.join(oldTokens.slice(oldPos, oldPos + component.count));
+        oldPos += component.count;
+      }
+    }
+    return components;
+  }
+};
+
+// node_modules/diff/libesm/diff/line.js
+var LineDiff = class extends Diff {
+  constructor() {
+    super(...arguments);
+    this.tokenize = tokenize;
+  }
+  equals(left, right, options) {
+    if (options.ignoreWhitespace) {
+      if (!options.newlineIsToken || !left.includes("\n")) {
+        left = left.trim();
+      }
+      if (!options.newlineIsToken || !right.includes("\n")) {
+        right = right.trim();
+      }
+    } else if (options.ignoreNewlineAtEof && !options.newlineIsToken) {
+      if (left.endsWith("\n")) {
+        left = left.slice(0, -1);
+      }
+      if (right.endsWith("\n")) {
+        right = right.slice(0, -1);
+      }
+    }
+    return super.equals(left, right, options);
+  }
+};
+var lineDiff = new LineDiff();
+function diffLines(oldStr, newStr, options) {
+  return lineDiff.diff(oldStr, newStr, options);
+}
+function tokenize(value, options) {
+  if (options.stripTrailingCr) {
+    value = value.replace(/\r\n/g, "\n");
+  }
+  const retLines = [], linesAndNewlines = value.split(/(\n|\r\n)/);
+  if (!linesAndNewlines[linesAndNewlines.length - 1]) {
+    linesAndNewlines.pop();
+  }
+  for (let i = 0; i < linesAndNewlines.length; i++) {
+    const line = linesAndNewlines[i];
+    if (i % 2 && !options.newlineIsToken) {
+      retLines[retLines.length - 1] += line;
+    } else {
+      retLines.push(line);
+    }
+  }
+  return retLines;
+}
+
+// node_modules/diff/libesm/patch/create.js
+function structuredPatch(oldFileName, newFileName, oldStr, newStr, oldHeader, newHeader, options) {
+  let optionsObj;
+  if (!options) {
+    optionsObj = {};
+  } else if (typeof options === "function") {
+    optionsObj = { callback: options };
+  } else {
+    optionsObj = options;
+  }
+  if (typeof optionsObj.context === "undefined") {
+    optionsObj.context = 4;
+  }
+  const context = optionsObj.context;
+  if (optionsObj.newlineIsToken) {
+    throw new Error("newlineIsToken may not be used with patch-generation functions, only with diffing functions");
+  }
+  if (!optionsObj.callback) {
+    return diffLinesResultToPatch(diffLines(oldStr, newStr, optionsObj));
+  } else {
+    const { callback } = optionsObj;
+    diffLines(oldStr, newStr, Object.assign(Object.assign({}, optionsObj), { callback: (diff) => {
+      const patch = diffLinesResultToPatch(diff);
+      callback(patch);
+    } }));
+  }
+  function diffLinesResultToPatch(diff) {
+    if (!diff) {
+      return;
+    }
+    diff.push({ value: "", lines: [] });
+    function contextLines(lines) {
+      return lines.map(function(entry) {
+        return " " + entry;
+      });
+    }
+    const hunks = [];
+    let oldRangeStart = 0, newRangeStart = 0, curRange = [], oldLine = 1, newLine = 1;
+    for (let i = 0; i < diff.length; i++) {
+      const current = diff[i], lines = current.lines || splitLines(current.value);
+      current.lines = lines;
+      if (current.added || current.removed) {
+        if (!oldRangeStart) {
+          const prev = diff[i - 1];
+          oldRangeStart = oldLine;
+          newRangeStart = newLine;
+          if (prev) {
+            curRange = context > 0 ? contextLines(prev.lines.slice(-context)) : [];
+            oldRangeStart -= curRange.length;
+            newRangeStart -= curRange.length;
+          }
+        }
+        for (const line of lines) {
+          curRange.push((current.added ? "+" : "-") + line);
+        }
+        if (current.added) {
+          newLine += lines.length;
+        } else {
+          oldLine += lines.length;
+        }
+      } else {
+        if (oldRangeStart) {
+          if (lines.length <= context * 2 && i < diff.length - 2) {
+            for (const line of contextLines(lines)) {
+              curRange.push(line);
+            }
+          } else {
+            const contextSize = Math.min(lines.length, context);
+            for (const line of contextLines(lines.slice(0, contextSize))) {
+              curRange.push(line);
+            }
+            const hunk = {
+              oldStart: oldRangeStart,
+              oldLines: oldLine - oldRangeStart + contextSize,
+              newStart: newRangeStart,
+              newLines: newLine - newRangeStart + contextSize,
+              lines: curRange
+            };
+            hunks.push(hunk);
+            oldRangeStart = 0;
+            newRangeStart = 0;
+            curRange = [];
+          }
+        }
+        oldLine += lines.length;
+        newLine += lines.length;
+      }
+    }
+    for (const hunk of hunks) {
+      for (let i = 0; i < hunk.lines.length; i++) {
+        if (hunk.lines[i].endsWith("\n")) {
+          hunk.lines[i] = hunk.lines[i].slice(0, -1);
+        } else {
+          hunk.lines.splice(i + 1, 0, "\\ No newline at end of file");
+          i++;
+        }
+      }
+    }
+    return {
+      oldFileName,
+      newFileName,
+      oldHeader,
+      newHeader,
+      hunks
+    };
+  }
+}
+function splitLines(text) {
+  const hasTrailingNl = text.endsWith("\n");
+  const result = text.split("\n").map((line) => line + "\n");
+  if (hasTrailingNl) {
+    result.pop();
+  } else {
+    result.push(result.pop().slice(0, -1));
+  }
+  return result;
+}
+
 // src/core/lint.ts
 import { execFile, exec } from "node:child_process";
 import { promisify } from "node:util";
@@ -21637,9 +22005,108 @@ var SETTINGS_PATH = path7.resolve(
 var noopLogger3 = { log() {
 }, error() {
 } };
+async function getEditedLineRanges(projectPath, filePath) {
+  let stdout;
+  try {
+    const result = await execAsync(
+      `git -C "${projectPath}" diff HEAD -- "${filePath}"`,
+      { timeout: 1e4 }
+    );
+    stdout = result.stdout;
+  } catch {
+    return [];
+  }
+  if (!stdout) return [];
+  const ranges = [];
+  const lines = stdout.split("\n");
+  const hunkHeaderRe = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/;
+  let newLineNum = 0;
+  let runStart = null;
+  let runEnd = null;
+  const flushRun = () => {
+    if (runStart !== null && runEnd !== null) {
+      ranges.push([runStart, runEnd]);
+      runStart = null;
+      runEnd = null;
+    }
+  };
+  for (const line of lines) {
+    const hunkMatch = hunkHeaderRe.exec(line);
+    if (hunkMatch) {
+      flushRun();
+      const count = hunkMatch[2] !== void 0 ? parseInt(hunkMatch[2], 10) : 1;
+      if (count === 0) {
+        newLineNum = -1;
+      } else {
+        newLineNum = parseInt(hunkMatch[1], 10);
+      }
+      continue;
+    }
+    if (newLineNum === -1) continue;
+    if (line.startsWith("+++") || line.startsWith("---")) {
+      continue;
+    } else if (line.startsWith("+")) {
+      if (runStart === null) {
+        runStart = newLineNum;
+      }
+      runEnd = newLineNum;
+      newLineNum++;
+    } else if (line.startsWith("-")) {
+      flushRun();
+    } else if (line.startsWith(" ") || line.startsWith("\\")) {
+      flushRun();
+      if (line.startsWith(" ")) {
+        newLineNum++;
+      }
+    }
+  }
+  flushRun();
+  return ranges;
+}
+function expandAndMerge(ranges, buffer, lineCount) {
+  if (ranges.length === 0) return [];
+  const expanded = ranges.map(([s, e]) => [
+    Math.max(1, s - buffer),
+    Math.min(lineCount, e + buffer)
+  ]);
+  expanded.sort((a, b) => a[0] - b[0]);
+  const merged = [expanded[0]];
+  for (let i = 1; i < expanded.length; i++) {
+    const last = merged[merged.length - 1];
+    const curr = expanded[i];
+    if (curr[0] <= last[1] + 1) {
+      last[1] = Math.max(last[1], curr[1]);
+    } else {
+      merged.push(curr);
+    }
+  }
+  return merged;
+}
+function filterHunks(original, linted, allowedRanges) {
+  if (allowedRanges.length === 0) return original;
+  if (original === linted) return original;
+  const patch = structuredPatch("file", "file", original, linted, "", "", { context: 0 });
+  const acceptedHunks = patch.hunks.filter((hunk) => {
+    const hunkStart = hunk.oldStart;
+    const hunkEnd = hunk.oldStart + Math.max(hunk.oldLines - 1, 0);
+    return allowedRanges.some(
+      ([rStart, rEnd]) => hunkStart <= rEnd && hunkEnd >= rStart
+    );
+  });
+  if (acceptedHunks.length === 0) return original;
+  const lines = original.split("\n");
+  const sorted = [...acceptedHunks].sort((a, b) => b.oldStart - a.oldStart);
+  for (const hunk of sorted) {
+    const removeStart = hunk.oldStart - 1;
+    const removeCount = hunk.oldLines;
+    const newLines = hunk.lines.filter((l) => l.startsWith("+") || l.startsWith(" ")).map((l) => l.slice(1));
+    lines.splice(removeStart, removeCount, ...newLines);
+  }
+  return lines.join("\n");
+}
 async function lint(projectPath, options = {}) {
   const logger = options.logger ?? noopLogger3;
-  const _bufferLines = options.bufferLines ?? 3;
+  const bufferLines = options.bufferLines ?? 3;
   try {
     await execAsync("which jb", { timeout: 5e3 });
   } catch {
@@ -21666,8 +22133,39 @@ async function lint(projectPath, options = {}) {
     logger.log("Lint: no changed .cs files exist on disk, skipping");
     return { filesLinted: 0, success: true };
   }
-  logger.log(`Lint: formatting ${files.length} file(s) with jb cleanupcode`);
-  const args = ["cleanupcode", ...files];
+  const snapshots = /* @__PURE__ */ new Map();
+  const rangesMap = /* @__PURE__ */ new Map();
+  for (const filePath of files) {
+    const content = fs9.readFileSync(filePath, "utf-8");
+    snapshots.set(filePath, content);
+    const ranges = await getEditedLineRanges(projectPath, filePath);
+    if (ranges.length > 0) {
+      const lineCount = content.split("\n").length;
+      rangesMap.set(filePath, expandAndMerge(ranges, bufferLines, lineCount));
+    }
+  }
+  const filesToLint = [];
+  for (const f of files) {
+    const ranges = rangesMap.get(f);
+    if (ranges && ranges.length > 0) {
+      filesToLint.push(f);
+      continue;
+    }
+    try {
+      await execAsync(
+        `git -C "${projectPath}" cat-file -e HEAD:"${path7.relative(projectPath, f)}"`,
+        { timeout: 5e3 }
+      );
+    } catch {
+      filesToLint.push(f);
+    }
+  }
+  if (filesToLint.length === 0) {
+    logger.log("Lint: no files need linting after range analysis, skipping");
+    return { filesLinted: 0, success: true };
+  }
+  logger.log(`Lint: formatting ${filesToLint.length} file(s) with jb cleanupcode`);
+  const args = ["cleanupcode", ...filesToLint];
   if (fs9.existsSync(SETTINGS_PATH)) {
     args.push(`--settings=${SETTINGS_PATH}`);
   }
@@ -21678,8 +22176,19 @@ async function lint(projectPath, options = {}) {
   } catch {
     logger.log("Lint: jb cleanupcode returned non-zero (warnings likely)");
   }
+  for (const filePath of filesToLint) {
+    const snapshot = snapshots.get(filePath);
+    const ranges = rangesMap.get(filePath);
+    if (snapshot === void 0) continue;
+    if (!ranges) continue;
+    const linted = fs9.readFileSync(filePath, "utf-8");
+    const filtered = filterHunks(snapshot, linted, ranges);
+    if (filtered !== linted) {
+      fs9.writeFileSync(filePath, filtered);
+    }
+  }
   logger.log("Lint: done");
-  return { filesLinted: files.length, success: true };
+  return { filesLinted: filesToLint.length, success: true };
 }
 
 // src/core/test.ts
