@@ -199,6 +199,8 @@ action: "recompile" | "bootstrap_handshake" | "run_tests" | "list_tests";
 
 The `payload` field on `BridgeRequest` is renamed from `TestRunPayload` to `TestDiscoveryFilters` — same shape, same JSON wire format, purely a type rename. The C# side is unchanged (it reads `payload` as a `string` and deserializes with `JsonUtility.FromJson`).
 
+**Payload serialization note:** `writeBridgeRequest` in `ipc.ts` already handles pre-serializing the `payload` object to a JSON string before writing (since C#'s `RequestPayload.payload` is a `string` field). The new `list_tests` core module must use `writeBridgeRequest` — not manually construct the wire format — so this serialization is handled automatically. During the type refactor, ensure `BridgeRequest.payload` stays typed as `TestDiscoveryFilters` (an object), not as `string`. The string conversion is `writeBridgeRequest`'s responsibility.
+
 #### New status state: `list_tests_finished`
 
 Added to the `BridgeStatus.state` union type.
