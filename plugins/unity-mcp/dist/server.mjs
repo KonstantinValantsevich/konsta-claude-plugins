@@ -3221,8 +3221,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path9) {
-      let input = path9;
+    function removeDotSegments(path8) {
+      let input = path8;
       const output = [];
       let nextSlash = -1;
       let len = 0;
@@ -3421,8 +3421,8 @@ var require_schemes = __commonJS({
         wsComponent.secure = void 0;
       }
       if (wsComponent.resourceName) {
-        const [path9, query] = wsComponent.resourceName.split("?");
-        wsComponent.path = path9 && path9 !== "/" ? path9 : void 0;
+        const [path8, query] = wsComponent.resourceName.split("?");
+        wsComponent.path = path8 && path8 !== "/" ? path8 : void 0;
         wsComponent.query = query;
         wsComponent.resourceName = void 0;
       }
@@ -6784,12 +6784,12 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats(ajv, list, fs11, exportName) {
+    function addFormats(ajv, list, fs10, exportName) {
       var _a;
       var _b;
       (_a = (_b = ajv.opts.code).formats) !== null && _a !== void 0 ? _a : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list)
-        ajv.addFormat(f, fs11[f]);
+        ajv.addFormat(f, fs10[f]);
     }
     module.exports = exports = formatsPlugin;
     Object.defineProperty(exports, "__esModule", { value: true });
@@ -7275,8 +7275,8 @@ function getErrorMap() {
 
 // node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path9, errorMaps, issueData } = params;
-  const fullPath = [...path9, ...issueData.path || []];
+  const { data, path: path8, errorMaps, issueData } = params;
+  const fullPath = [...path8, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -7392,11 +7392,11 @@ var errorUtil;
 
 // node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path9, key) {
+  constructor(parent, value, path8, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path9;
+    this._path = path8;
     this._key = key;
   }
   get path() {
@@ -11033,10 +11033,10 @@ function assignProp(target, prop, value) {
     configurable: true
   });
 }
-function getElementAtPath(obj, path9) {
-  if (!path9)
+function getElementAtPath(obj, path8) {
+  if (!path8)
     return obj;
-  return path9.reduce((acc, key) => acc?.[key], obj);
+  return path8.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -11356,11 +11356,11 @@ function aborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path9, issues) {
+function prefixIssues(path8, issues) {
   return issues.map((iss) => {
     var _a;
     (_a = iss).path ?? (_a.path = []);
-    iss.path.unshift(path9);
+    iss.path.unshift(path8);
     return iss;
   });
 }
@@ -20984,32 +20984,11 @@ var StdioServerTransport = class {
   }
 };
 
-// src/lib/project/detect.ts
-import fs from "node:fs";
-import path from "node:path";
-function detectUnityProject(cwd) {
-  let dir = path.resolve(cwd);
-  while (true) {
-    if (fs.existsSync(path.join(dir, "Assets")) && fs.existsSync(path.join(dir, "ProjectSettings", "ProjectVersion.txt"))) {
-      return dir;
-    }
-    const parent = path.dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  return null;
-}
-
-// src/core/detect.ts
-function detectProject(cwd) {
-  return detectUnityProject(cwd);
-}
-
 // src/core/recompile.ts
-import fs8 from "node:fs";
+import fs7 from "node:fs";
 
 // src/lib/config.ts
-import path2 from "node:path";
+import path from "node:path";
 import os from "node:os";
 var BRIDGE_PROTOCOL_VERSION = 1;
 var BRIDGE_VERSION = "3";
@@ -21018,8 +20997,8 @@ var BRIDGE_READY_TIMEOUT_MS = 12e4;
 var BRIDGE_STATUS_TIMEOUT_MS = 12e4;
 var BRIDGE_BUSY_RETRY_DELAY_MS = 1e3;
 var BRIDGE_MAX_BUSY_RETRIES = 1;
-var CACHE_DIR = path2.join(os.homedir(), ".claude", "cache", "unity-recompile");
-var MARKER_DIR = path2.join(CACHE_DIR, "markers");
+var CACHE_DIR = path.join(os.homedir(), ".claude", "cache", "unity-recompile");
+var MARKER_DIR = path.join(CACHE_DIR, "markers");
 var BRIDGE_ASSET_DIR = "Assets/Recompile Hook";
 var BRIDGE_EDITOR_DIR = "Assets/Recompile Hook/Editor";
 var BRIDGE_CS_FILENAME = "ClaudeRecompileBridge.cs";
@@ -21031,39 +21010,39 @@ var GIT_EXCLUDE_PATTERNS = [
   "/Assets/Recompile Hook.meta"
 ];
 function bridgePaths(projectPath) {
-  const ipcDir = path2.join(projectPath, BRIDGE_IPC_DIRNAME);
+  const ipcDir = path.join(projectPath, BRIDGE_IPC_DIRNAME);
   return {
-    bridgeRootDir: path2.join(projectPath, BRIDGE_ASSET_DIR),
-    bridgeEditorDir: path2.join(projectPath, BRIDGE_EDITOR_DIR),
-    bridgeFile: path2.join(projectPath, BRIDGE_EDITOR_DIR, BRIDGE_CS_FILENAME),
+    bridgeRootDir: path.join(projectPath, BRIDGE_ASSET_DIR),
+    bridgeEditorDir: path.join(projectPath, BRIDGE_EDITOR_DIR),
+    bridgeFile: path.join(projectPath, BRIDGE_EDITOR_DIR, BRIDGE_CS_FILENAME),
     ipcDir,
-    requestFile: path2.join(ipcDir, BRIDGE_REQUEST_FILENAME),
-    readyFile: path2.join(ipcDir, BRIDGE_READY_FILENAME),
-    statusFile: (requestId) => path2.join(ipcDir, `status-${requestId}.json`)
+    requestFile: path.join(ipcDir, BRIDGE_REQUEST_FILENAME),
+    readyFile: path.join(ipcDir, BRIDGE_READY_FILENAME),
+    statusFile: (requestId) => path.join(ipcDir, `status-${requestId}.json`)
   };
 }
 
 // src/lib/project/changes.ts
 import crypto from "node:crypto";
 import { execSync } from "node:child_process";
-import fs2 from "node:fs";
-import path3 from "node:path";
+import fs from "node:fs";
+import path2 from "node:path";
 function getMarkerPath(projectPath, markerDir = MARKER_DIR) {
   const hash = crypto.createHash("md5").update(projectPath).digest("hex");
-  return path3.join(markerDir, `recompile-${hash}`);
+  return path2.join(markerDir, `recompile-${hash}`);
 }
 function ensureMarker(markerPath) {
-  if (!fs2.existsSync(markerPath)) {
-    fs2.mkdirSync(path3.dirname(markerPath), { recursive: true });
-    fs2.writeFileSync(markerPath, "");
+  if (!fs.existsSync(markerPath)) {
+    fs.mkdirSync(path2.dirname(markerPath), { recursive: true });
+    fs.writeFileSync(markerPath, "");
     const epoch = /* @__PURE__ */ new Date(0);
-    fs2.utimesSync(markerPath, epoch, epoch);
+    fs.utimesSync(markerPath, epoch, epoch);
   }
 }
 function hasChangedCsFiles(projectPath, markerPath) {
   try {
     const result = execSync(
-      `find "${path3.join(projectPath, "Assets")}" -name "*.cs" -newer "${markerPath}" -print -quit 2>/dev/null`,
+      `find "${path2.join(projectPath, "Assets")}" -name "*.cs" -newer "${markerPath}" -print -quit 2>/dev/null`,
       { encoding: "utf-8", timeout: 1e4 }
     ).trim();
     return result.length > 0;
@@ -21072,38 +21051,38 @@ function hasChangedCsFiles(projectPath, markerPath) {
   }
 }
 function touchMarker(markerPath) {
-  if (!fs2.existsSync(markerPath)) {
-    fs2.mkdirSync(path3.dirname(markerPath), { recursive: true });
-    fs2.writeFileSync(markerPath, "");
+  if (!fs.existsSync(markerPath)) {
+    fs.mkdirSync(path2.dirname(markerPath), { recursive: true });
+    fs.writeFileSync(markerPath, "");
   }
   const now = /* @__PURE__ */ new Date();
-  fs2.utimesSync(markerPath, now, now);
+  fs.utimesSync(markerPath, now, now);
 }
 
 // src/lib/bridge/install.ts
-import fs4 from "node:fs";
-import path5 from "node:path";
+import fs3 from "node:fs";
+import path4 from "node:path";
 import { fileURLToPath } from "node:url";
 import { execSync as execSync2 } from "node:child_process";
 
 // src/lib/logger.ts
-import fs3 from "node:fs";
-import path4 from "node:path";
-var LOG_FILE = path4.join(CACHE_DIR, "unity-recompile.log");
+import fs2 from "node:fs";
+import path3 from "node:path";
+var LOG_FILE = path3.join(CACHE_DIR, "unity-recompile.log");
 function log(message) {
   const timestamp = (/* @__PURE__ */ new Date()).toLocaleTimeString("en-GB", { hour12: false });
   const line = `[${timestamp}] ${message}
 `;
   try {
-    fs3.mkdirSync(path4.dirname(LOG_FILE), { recursive: true });
-    fs3.appendFileSync(LOG_FILE, line);
+    fs2.mkdirSync(path3.dirname(LOG_FILE), { recursive: true });
+    fs2.appendFileSync(LOG_FILE, line);
   } catch {
   }
 }
 
 // src/lib/bridge/install.ts
-var __dirname = path5.dirname(fileURLToPath(import.meta.url));
-var TEMPLATE_PATH = path5.resolve(
+var __dirname = path4.dirname(fileURLToPath(import.meta.url));
+var TEMPLATE_PATH = path4.resolve(
   __dirname,
   "..",
   "..",
@@ -21113,18 +21092,18 @@ var TEMPLATE_PATH = path5.resolve(
 );
 function ensureBridgeInstalled(projectPath) {
   const paths = bridgePaths(projectPath);
-  const templateContent = fs4.readFileSync(TEMPLATE_PATH, "utf-8");
-  fs4.mkdirSync(paths.bridgeEditorDir, { recursive: true });
-  if (fs4.existsSync(paths.bridgeFile)) {
-    const existing = fs4.readFileSync(paths.bridgeFile, "utf-8");
+  const templateContent = fs3.readFileSync(TEMPLATE_PATH, "utf-8");
+  fs3.mkdirSync(paths.bridgeEditorDir, { recursive: true });
+  if (fs3.existsSync(paths.bridgeFile)) {
+    const existing = fs3.readFileSync(paths.bridgeFile, "utf-8");
     if (existing === templateContent) {
       log("Bridge already up to date");
       return { changed: false };
     }
   }
   const tmpFile = paths.bridgeFile + ".tmp";
-  fs4.writeFileSync(tmpFile, templateContent);
-  fs4.renameSync(tmpFile, paths.bridgeFile);
+  fs3.writeFileSync(tmpFile, templateContent);
+  fs3.renameSync(tmpFile, paths.bridgeFile);
   log(`Bridge installed/updated: ${paths.bridgeFile}`);
   return { changed: true };
 }
@@ -21136,11 +21115,11 @@ function ensureGitExclude(projectPath) {
       timeout: 5e3
     }).trim();
     if (!gitDir) return;
-    const excludeFile = path5.join(projectPath, gitDir, "info", "exclude");
-    fs4.mkdirSync(path5.dirname(excludeFile), { recursive: true });
+    const excludeFile = path4.join(projectPath, gitDir, "info", "exclude");
+    fs3.mkdirSync(path4.dirname(excludeFile), { recursive: true });
     let content = "";
     try {
-      content = fs4.readFileSync(excludeFile, "utf-8");
+      content = fs3.readFileSync(excludeFile, "utf-8");
     } catch {
     }
     let changed = false;
@@ -21153,7 +21132,7 @@ function ensureGitExclude(projectPath) {
       }
     }
     if (changed) {
-      fs4.writeFileSync(excludeFile, content);
+      fs3.writeFileSync(excludeFile, content);
     }
   } catch {
     log("Bridge exclude: unable to locate .git dir, skipping");
@@ -21161,7 +21140,7 @@ function ensureGitExclude(projectPath) {
 }
 
 // src/lib/bridge/orchestrate.ts
-import fs7 from "node:fs";
+import fs6 from "node:fs";
 
 // src/lib/compile/applescript.ts
 import { execSync as execSync3 } from "node:child_process";
@@ -21226,16 +21205,16 @@ function triggerEditorRefreshOnly(projectPath) {
 
 // src/lib/compile/cli-fallback.ts
 import { execSync as execSync4 } from "node:child_process";
-import fs5 from "node:fs";
-import path6 from "node:path";
+import fs4 from "node:fs";
+import path5 from "node:path";
 function readUnityVersion(projectPath) {
-  const versionFile = path6.join(
+  const versionFile = path5.join(
     projectPath,
     "ProjectSettings",
     "ProjectVersion.txt"
   );
   try {
-    const content = fs5.readFileSync(versionFile, "utf-8");
+    const content = fs4.readFileSync(versionFile, "utf-8");
     const match = content.match(/m_EditorVersion:\s*(.+)/);
     return match?.[1]?.trim() || null;
   } catch {
@@ -21252,7 +21231,7 @@ function runCliFallback(projectPath) {
     };
   }
   const unityPath = `/Applications/Unity/Hub/Editor/${version2}/Unity.app/Contents/MacOS/Unity`;
-  if (!fs5.existsSync(unityPath)) {
+  if (!fs4.existsSync(unityPath)) {
     return {
       success: false,
       didCompile: false,
@@ -21292,7 +21271,7 @@ function runCliFallback(projectPath) {
 
 // src/lib/bridge/ipc.ts
 import crypto2 from "node:crypto";
-import fs6 from "node:fs";
+import fs5 from "node:fs";
 function generateRequestId() {
   const secs = Math.floor(Date.now() / 1e3);
   const rnd = crypto2.randomBytes(4).toString("hex");
@@ -21300,16 +21279,16 @@ function generateRequestId() {
 }
 function writeBridgeRequest(requestFilePath, request) {
   const tmpPath = requestFilePath + ".tmp";
-  fs6.writeFileSync(tmpPath, JSON.stringify(request));
-  fs6.renameSync(tmpPath, requestFilePath);
+  fs5.writeFileSync(tmpPath, JSON.stringify(request));
+  fs5.renameSync(tmpPath, requestFilePath);
   const now = /* @__PURE__ */ new Date();
-  fs6.utimesSync(requestFilePath, now, now);
+  fs5.utimesSync(requestFilePath, now, now);
   log(`Wrote bridge request: action=${request.action} requestId=${request.requestId}`);
 }
 function readBridgeStatus(statusPath) {
   try {
-    if (!fs6.existsSync(statusPath)) return null;
-    const content = fs6.readFileSync(statusPath, "utf-8");
+    if (!fs5.existsSync(statusPath)) return null;
+    const content = fs5.readFileSync(statusPath, "utf-8");
     return JSON.parse(content);
   } catch {
     return null;
@@ -21317,8 +21296,8 @@ function readBridgeStatus(statusPath) {
 }
 function readBridgeReady(readyPath) {
   try {
-    if (!fs6.existsSync(readyPath)) return null;
-    return JSON.parse(fs6.readFileSync(readyPath, "utf-8"));
+    if (!fs5.existsSync(readyPath)) return null;
+    return JSON.parse(fs5.readFileSync(readyPath, "utf-8"));
   } catch {
     return null;
   }
@@ -21416,7 +21395,7 @@ async function bridgeRequestAndWait(projectPath, action, timeoutMs) {
     const requestId = generateRequestId();
     const statusPath = paths.statusFile(requestId);
     try {
-      fs7.unlinkSync(statusPath);
+      fs6.unlinkSync(statusPath);
     } catch {
     }
     const request = {
@@ -21428,7 +21407,7 @@ async function bridgeRequestAndWait(projectPath, action, timeoutMs) {
       reason: "claude-stop-hook",
       source: "unity-recompile-ts"
     };
-    fs7.mkdirSync(paths.ipcDir, { recursive: true });
+    fs6.mkdirSync(paths.ipcDir, { recursive: true });
     writeBridgeRequest(paths.requestFile, request);
     const status = await waitForBridgeStatus(statusPath, requestId, timeoutMs);
     if (!status) {
@@ -21512,7 +21491,7 @@ var noopLogger = { log() {
 }, error() {
 } };
 async function recompile(projectPath, logger = noopLogger) {
-  fs8.mkdirSync(MARKER_DIR, { recursive: true });
+  fs7.mkdirSync(MARKER_DIR, { recursive: true });
   const markerPath = getMarkerPath(projectPath);
   ensureMarker(markerPath);
   if (!hasChangedCsFiles(projectPath, markerPath)) {
@@ -21522,7 +21501,7 @@ async function recompile(projectPath, logger = noopLogger) {
   logger.log("C# files changed, triggering recompilation");
   const paths = bridgePaths(projectPath);
   ensureGitExclude(projectPath);
-  fs8.mkdirSync(paths.ipcDir, { recursive: true });
+  fs7.mkdirSync(paths.ipcDir, { recursive: true });
   const { changed: bridgeChangedThisRun } = ensureBridgeInstalled(projectPath);
   const result = await orchestrateRecompile(projectPath, bridgeChangedThisRun);
   if (result.success || result.didCompile) {
@@ -21551,19 +21530,19 @@ async function recompile(projectPath, logger = noopLogger) {
 }
 
 // src/core/status.ts
-import fs9 from "node:fs";
-import path7 from "node:path";
+import fs8 from "node:fs";
+import path6 from "node:path";
 var noopLogger2 = { log() {
 }, error() {
 } };
 function readUnityVersion2(projectPath) {
-  const versionFile = path7.join(
+  const versionFile = path6.join(
     projectPath,
     "ProjectSettings",
     "ProjectVersion.txt"
   );
   try {
-    const content = fs9.readFileSync(versionFile, "utf-8");
+    const content = fs8.readFileSync(versionFile, "utf-8");
     const match = content.match(/m_EditorVersion:\s*(.+)/);
     return match?.[1]?.trim() || null;
   } catch {
@@ -21583,7 +21562,7 @@ async function getStatus(projectPath, logger = noopLogger2) {
   let lastRecompileMarker = null;
   try {
     const markerPath = getMarkerPath(projectPath);
-    const stat = fs9.statSync(markerPath);
+    const stat = fs8.statSync(markerPath);
     lastRecompileMarker = stat.mtime;
   } catch {
   }
@@ -21602,13 +21581,13 @@ async function getStatus(projectPath, logger = noopLogger2) {
 // src/core/lint.ts
 import { execFile, exec } from "node:child_process";
 import { promisify } from "node:util";
-import fs10 from "node:fs";
-import path8 from "node:path";
+import fs9 from "node:fs";
+import path7 from "node:path";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 var execFileAsync = promisify(execFile);
 var execAsync = promisify(exec);
-var __dirname2 = path8.dirname(fileURLToPath2(import.meta.url));
-var SETTINGS_PATH = path8.resolve(
+var __dirname2 = path7.dirname(fileURLToPath2(import.meta.url));
+var SETTINGS_PATH = path7.resolve(
   __dirname2,
   "..",
   "..",
@@ -21640,14 +21619,14 @@ async function lint(projectPath, logger = noopLogger3) {
     logger.log("Lint: no changed .cs files, skipping");
     return { filesLinted: 0, success: true };
   }
-  const files = changedOutput.split("\n").filter(Boolean).map((f) => path8.join(projectPath, f)).filter((f) => fs10.existsSync(f));
+  const files = changedOutput.split("\n").filter(Boolean).map((f) => path7.join(projectPath, f)).filter((f) => fs9.existsSync(f));
   if (files.length === 0) {
     logger.log("Lint: no changed .cs files exist on disk, skipping");
     return { filesLinted: 0, success: true };
   }
   logger.log(`Lint: formatting ${files.length} file(s) with jb cleanupcode`);
   const args = ["cleanupcode", ...files];
-  if (fs10.existsSync(SETTINGS_PATH)) {
+  if (fs9.existsSync(SETTINGS_PATH)) {
     args.push(`--settings=${SETTINGS_PATH}`);
   }
   args.push("--verbosity=WARN");
@@ -21671,40 +21650,17 @@ var stderrLogger = {
     console.error(`[unity-mcp] ERROR: ${msg}`);
   }
 };
-var cachedProjectRoot = null;
 function createServer() {
   const server = new McpServer({
     name: "unity-mcp",
     version: "1.0.0"
   });
   server.tool(
-    "unity_detect_project",
-    "Detect if a directory is inside a Unity project. Returns the project root path or null.",
-    { cwd: external_exports.string().describe("Directory to search from") },
-    async ({ cwd }) => {
-      const projectPath = detectProject(cwd);
-      if (projectPath) cachedProjectRoot = projectPath;
-      return {
-        content: [{
-          type: "text",
-          text: projectPath ? `Unity project found: ${projectPath}` : "Not inside a Unity project"
-        }]
-      };
-    }
-  );
-  server.tool(
     "unity_recompile",
     "Trigger Unity recompilation. Detects C# changes, installs bridge, and orchestrates compilation.",
-    { projectPath: external_exports.string().optional().describe("Unity project root path (uses cached detection if omitted)") },
+    { projectPath: external_exports.string().describe("Unity project root path") },
     async ({ projectPath }) => {
-      const path9 = projectPath || cachedProjectRoot;
-      if (!path9) {
-        return {
-          content: [{ type: "text", text: "No project path provided and none cached. Run unity_detect_project first." }],
-          isError: true
-        };
-      }
-      const result = await recompile(path9, stderrLogger);
+      const result = await recompile(projectPath, stderrLogger);
       if (result.skipped) {
         return {
           content: [{ type: "text", text: "No C# changes detected. Recompilation skipped." }]
@@ -21726,16 +21682,9 @@ ${errorText}` }],
   server.tool(
     "unity_status",
     "Show Unity project and bridge diagnostics \u2014 editor status, bridge readiness, version info.",
-    { projectPath: external_exports.string().optional().describe("Unity project root path (uses cached detection if omitted)") },
+    { projectPath: external_exports.string().describe("Unity project root path") },
     async ({ projectPath }) => {
-      const path9 = projectPath || cachedProjectRoot;
-      if (!path9) {
-        return {
-          content: [{ type: "text", text: "No project path provided and none cached. Run unity_detect_project first." }],
-          isError: true
-        };
-      }
-      const status = await getStatus(path9, stderrLogger);
+      const status = await getStatus(projectPath, stderrLogger);
       const lines = [
         `Unity Project: ${status.projectPath}`,
         `Unity Version: ${status.unityVersion ?? "Unknown"}`,
@@ -21751,16 +21700,9 @@ ${errorText}` }],
   server.tool(
     "unity_lint",
     "Run JetBrains cleanup code on changed C# files in the Unity project.",
-    { projectPath: external_exports.string().optional().describe("Unity project root path (uses cached detection if omitted)") },
+    { projectPath: external_exports.string().describe("Unity project root path") },
     async ({ projectPath }) => {
-      const path9 = projectPath || cachedProjectRoot;
-      if (!path9) {
-        return {
-          content: [{ type: "text", text: "No project path provided and none cached. Run unity_detect_project first." }],
-          isError: true
-        };
-      }
-      const result = await lint(path9, stderrLogger);
+      const result = await lint(projectPath, stderrLogger);
       return {
         content: [{
           type: "text",
