@@ -21310,7 +21310,14 @@ function readBridgeStatus(statusPath) {
   try {
     if (!fs5.existsSync(statusPath)) return null;
     const content = fs5.readFileSync(statusPath, "utf-8");
-    return JSON.parse(content);
+    const raw = JSON.parse(content);
+    if (typeof raw.testResults === "string" && raw.testResults) {
+      try {
+        raw.testResults = JSON.parse(raw.testResults);
+      } catch {
+      }
+    }
+    return raw;
   } catch {
     return null;
   }
@@ -21372,7 +21379,8 @@ var TERMINAL_STATES = /* @__PURE__ */ new Set([
   "failed",
   "bridge_error",
   "busy",
-  "timeout"
+  "timeout",
+  "tests_finished"
 ]);
 async function waitForBridgeReady(readyPath, projectPath, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
