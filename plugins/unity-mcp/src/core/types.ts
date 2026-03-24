@@ -71,3 +71,9 @@ export interface TestResultsViewResult {
   formatted: string;
   stale: boolean;
 }
+
+export interface ListTestsResult {
+  formatted: string;
+  totalCount: number;
+  matchedCount: number;
+}

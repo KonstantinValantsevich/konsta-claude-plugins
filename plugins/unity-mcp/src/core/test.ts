@@ -14,7 +14,7 @@ import { unityIsRunning } from "../lib/compile/applescript.js";
 import { saveTestRun } from "../lib/test-store.js";
 import { getTestResults } from "./test-results.js";
 import { getMarkerPath, ensureMarker, touchMarker } from "../lib/project/changes.js";
-import type { BridgeRequest, TestRunPayload } from "../lib/bridge/types.js";
+import type { BridgeRequest, TestDiscoveryFilters } from "../lib/bridge/types.js";
 import type { Logger, RunTestsResult } from "./types.js";
 
 const noopLogger: Logger = { log() {}, error() {} };
@@ -51,7 +51,7 @@ export async function runTests(opts: RunTestsOptions): Promise<RunTestsResult> {
 
   try { fs.unlinkSync(statusPath); } catch { /* doesn't exist */ }
 
-  const payload: TestRunPayload = {};
+  const payload: TestDiscoveryFilters = {};
   if (opts.categoryNames?.length) payload.categoryNames = opts.categoryNames;
   if (opts.groupNames?.length) payload.groupNames = opts.groupNames;
   if (opts.assemblyNames?.length) payload.assemblyNames = opts.assemblyNames;

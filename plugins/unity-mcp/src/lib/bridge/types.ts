@@ -3,17 +3,27 @@ export interface BridgeRequest {
   requestId: string;
   requestedAtUnixMs: number;
   projectPath: string;
-  action: "recompile" | "bootstrap_handshake" | "run_tests";
+  action: "recompile" | "bootstrap_handshake" | "run_tests" | "list_tests";
   reason: string;
   source: string;
-  payload?: TestRunPayload;
+  payload?: TestDiscoveryFilters;
 }
 
-export interface TestRunPayload {
+/** Filters for test discovery/execution — only flow into bridge requests */
+export interface TestDiscoveryFilters {
   categoryNames?: string[];
   groupNames?: string[];
   assemblyNames?: string[];
 }
+
+/** Filters for post-hoc result viewing — only used on stored results */
+export interface TestResultFilters {
+  statusFilter?: "passed" | "failed" | "skipped";
+  nameFilter?: string;
+}
+
+/** @deprecated Use TestDiscoveryFilters */
+export type TestRunPayload = TestDiscoveryFilters;
 
 export interface CompileError {
   assembly: string;
@@ -22,6 +32,19 @@ export interface CompileError {
   column: number;
   message: string;
   type: string;
+}
+
+export interface TestListEntry {
+  fullName: string;
+  name: string;
+  categories: string[];
+  assembly: string;
+}
+
+export interface TestListResult {
+  totalCount: number;
+  matchedCount: number;
+  tests: TestListEntry[];
 }
 
 export interface BridgeStatus {
@@ -39,7 +62,8 @@ export interface BridgeStatus {
     | "bridge_error"
     | "busy"
     | "timeout"
-    | "tests_finished";
+    | "tests_finished"
+    | "list_tests_finished";
   createdAtUnixMs: number;
   updatedAtUnixMs: number;
   didCompile: boolean;
@@ -47,6 +71,7 @@ export interface BridgeStatus {
   errors: CompileError[];
   summary: string;
   testResults?: TestResults;
+  testList?: TestListResult;
 }
 
 export interface TestResults {
