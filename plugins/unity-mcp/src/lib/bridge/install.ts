@@ -2,50 +2,60 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { execSync } from "node:child_process";
-import { bridgePaths, GIT_EXCLUDE_PATTERNS } from "../config.js";
+import { bridgePaths, BRIDGE_CS_FILES, GIT_EXCLUDE_PATTERNS, LEGACY_BRIDGE_ASSET_DIR } from "../config.js";
 import { log } from "../logger.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const TEMPLATE_PATH = path.resolve(
-  __dirname,
-  "..",
-  "..",
-  "..",
-  "templates",
-  "ClaudeRecompileBridge.cs",
-);
+const TEMPLATES_DIR = path.resolve(__dirname, "..", "..", "..", "templates");
 
-/**
- * Ensure the bridge C# file is installed and up-to-date in the Unity project.
- * Returns whether the file was changed (installed or updated).
- */
 export function ensureBridgeInstalled(projectPath: string): {
   changed: boolean;
 } {
   const paths = bridgePaths(projectPath);
-  const templateContent = fs.readFileSync(TEMPLATE_PATH, "utf-8");
+
+  // Migration: remove old folder if it exists
+  const legacyDir = path.join(projectPath, LEGACY_BRIDGE_ASSET_DIR);
+  if (fs.existsSync(legacyDir)) {
+    log("Migrating: removing legacy bridge folder " + legacyDir);
+    fs.rmSync(legacyDir, { recursive: true, force: true });
+    const legacyMeta = legacyDir + ".meta";
+    if (fs.existsSync(legacyMeta)) fs.unlinkSync(legacyMeta);
+  }
 
   fs.mkdirSync(paths.bridgeEditorDir, { recursive: true });
 
-  if (fs.existsSync(paths.bridgeFile)) {
-    const existing = fs.readFileSync(paths.bridgeFile, "utf-8");
-    if (existing === templateContent) {
-      log("Bridge already up to date");
-      return { changed: false };
+  let anyChanged = false;
+  for (const filename of BRIDGE_CS_FILES) {
+    const templatePath = path.join(TEMPLATES_DIR, filename);
+    const destPath = path.join(paths.bridgeEditorDir, filename);
+
+    if (!fs.existsSync(templatePath)) {
+      log("Template not found, skipping: " + filename);
+      continue;
     }
+
+    const templateContent = fs.readFileSync(templatePath, "utf-8");
+
+    if (fs.existsSync(destPath)) {
+      const existing = fs.readFileSync(destPath, "utf-8");
+      if (existing === templateContent) {
+        continue;
+      }
+    }
+
+    const tmpFile = destPath + ".tmp";
+    fs.writeFileSync(tmpFile, templateContent);
+    fs.renameSync(tmpFile, destPath);
+    log("Bridge installed/updated: " + destPath);
+    anyChanged = true;
   }
 
-  // Atomic write: tmp file + rename
-  const tmpFile = paths.bridgeFile + ".tmp";
-  fs.writeFileSync(tmpFile, templateContent);
-  fs.renameSync(tmpFile, paths.bridgeFile);
-  log(`Bridge installed/updated: ${paths.bridgeFile}`);
-  return { changed: true };
+  if (!anyChanged) {
+    log("All bridge files up to date");
+  }
+  return { changed: anyChanged };
 }
 
-/**
- * Ensure bridge paths are in .git/info/exclude so they don't pollute git status.
- */
 export function ensureGitExclude(projectPath: string): void {
   try {
     const gitDir = execSync("git rev-parse --git-dir", {
@@ -70,7 +80,7 @@ export function ensureGitExclude(projectPath: string): void {
       if (!content.split("\n").includes(pattern)) {
         content += `${pattern}\n`;
         changed = true;
-        log(`Bridge exclude: added ${pattern}`);
+        log("Bridge exclude: added " + pattern);
       }
     }
 

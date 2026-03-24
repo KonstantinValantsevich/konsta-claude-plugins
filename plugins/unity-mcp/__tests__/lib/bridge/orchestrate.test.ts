@@ -45,7 +45,7 @@ describe("bridge orchestration", () => {
       JSON.stringify({
         protocolVersion: 1,
         requestId: request.requestId,
-        bridgeVersion: "3",
+        bridgeVersion: "4",
         projectPath: tmpDir,
         state: "completed",
         createdAtUnixMs: Date.now(),

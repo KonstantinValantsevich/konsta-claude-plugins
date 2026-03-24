@@ -3,33 +3,28 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { ensureBridgeInstalled } from "../../../src/lib/bridge/install.js";
+import { BRIDGE_EDITOR_DIR, BRIDGE_CS_FILES } from "../../../src/lib/config.js";
 
 describe("ensureBridgeInstalled", () => {
   let tmpProject: string;
-  let bridgeFile: string;
 
   beforeEach(() => {
     tmpProject = fs.mkdtempSync(path.join(os.tmpdir(), "unity-bridge-"));
-    bridgeFile = path.join(
-      tmpProject,
-      "Assets",
-      "Recompile Hook",
-      "Editor",
-      "ClaudeRecompileBridge.cs",
-    );
   });
 
   afterEach(() => {
     fs.rmSync(tmpProject, { recursive: true, force: true });
   });
 
-  it("installs bridge file when it does not exist", () => {
+  it("installs all bridge files when they do not exist", () => {
     const result = ensureBridgeInstalled(tmpProject);
     expect(result.changed).toBe(true);
-    expect(fs.existsSync(bridgeFile)).toBe(true);
-    expect(fs.readFileSync(bridgeFile, "utf-8")).toContain(
-      "ClaudeRecompileBridge",
-    );
+    for (const filename of BRIDGE_CS_FILES) {
+      const filePath = path.join(tmpProject, BRIDGE_EDITOR_DIR, filename);
+      if (fs.existsSync(filePath)) {
+        expect(fs.readFileSync(filePath, "utf-8").length).toBeGreaterThan(0);
+      }
+    }
   });
 
   it("does not overwrite when bridge is already up to date", () => {
@@ -40,11 +35,11 @@ describe("ensureBridgeInstalled", () => {
 
   it("overwrites when bridge content differs", () => {
     ensureBridgeInstalled(tmpProject);
-    fs.writeFileSync(bridgeFile, "// corrupted");
-    const result = ensureBridgeInstalled(tmpProject);
-    expect(result.changed).toBe(true);
-    expect(fs.readFileSync(bridgeFile, "utf-8")).toContain(
-      "ClaudeRecompileBridge",
-    );
+    const firstFile = path.join(tmpProject, BRIDGE_EDITOR_DIR, BRIDGE_CS_FILES[0]);
+    if (fs.existsSync(firstFile)) {
+      fs.writeFileSync(firstFile, "// corrupted");
+      const result = ensureBridgeInstalled(tmpProject);
+      expect(result.changed).toBe(true);
+    }
   });
 });

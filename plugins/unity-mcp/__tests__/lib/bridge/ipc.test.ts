@@ -64,7 +64,7 @@ describe("bridge IPC", () => {
       const status: BridgeStatus = {
         protocolVersion: 1,
         requestId: "test-123",
-        bridgeVersion: "3",
+        bridgeVersion: "4",
         projectPath: "/test",
         state: "completed",
         createdAtUnixMs: Date.now(),
@@ -82,7 +82,7 @@ describe("bridge IPC", () => {
   describe("parseBridgeStatusToResult", () => {
     it("returns success for completed status with isSuccess=true", () => {
       const status: BridgeStatus = {
-        protocolVersion: 1, requestId: "x", bridgeVersion: "3", projectPath: "/p",
+        protocolVersion: 1, requestId: "x", bridgeVersion: "4", projectPath: "/p",
         state: "completed", createdAtUnixMs: 0, updatedAtUnixMs: 0,
         didCompile: true, isSuccess: true, errors: [], summary: "OK",
       };
@@ -93,7 +93,7 @@ describe("bridge IPC", () => {
 
     it("returns failure with formatted errors for failed status", () => {
       const status: BridgeStatus = {
-        protocolVersion: 1, requestId: "x", bridgeVersion: "3", projectPath: "/p",
+        protocolVersion: 1, requestId: "x", bridgeVersion: "4", projectPath: "/p",
         state: "failed", createdAtUnixMs: 0, updatedAtUnixMs: 0,
         didCompile: true, isSuccess: false,
         errors: [{
@@ -109,7 +109,7 @@ describe("bridge IPC", () => {
 
     it("returns failure for busy state", () => {
       const status: BridgeStatus = {
-        protocolVersion: 1, requestId: "x", bridgeVersion: "3", projectPath: "/p",
+        protocolVersion: 1, requestId: "x", bridgeVersion: "4", projectPath: "/p",
         state: "busy", createdAtUnixMs: 0, updatedAtUnixMs: 0,
         didCompile: false, isSuccess: false, errors: [], summary: "Bridge is busy",
       };

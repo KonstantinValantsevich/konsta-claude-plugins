@@ -46,7 +46,7 @@ export async function getStatus(
 
   let lastRecompileMarker: Date | null = null;
   try {
-    const markerPath = getMarkerPath(projectPath);
+    const markerPath = getMarkerPath(projectPath, "recompile");
     const stat = fs.statSync(markerPath);
     lastRecompileMarker = stat.mtime;
   } catch {

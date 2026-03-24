@@ -20991,7 +20991,7 @@ import fs7 from "node:fs";
 import path from "node:path";
 import os from "node:os";
 var BRIDGE_PROTOCOL_VERSION = 1;
-var BRIDGE_VERSION = "3";
+var BRIDGE_VERSION = "4";
 var POLL_INTERVAL_MS = 500;
 var BRIDGE_READY_TIMEOUT_MS = 12e4;
 var BRIDGE_STATUS_TIMEOUT_MS = 12e4;
@@ -20999,22 +20999,31 @@ var BRIDGE_BUSY_RETRY_DELAY_MS = 1e3;
 var BRIDGE_MAX_BUSY_RETRIES = 1;
 var CACHE_DIR = path.join(os.homedir(), ".claude", "cache", "unity-recompile");
 var MARKER_DIR = path.join(CACHE_DIR, "markers");
-var BRIDGE_ASSET_DIR = "Assets/Recompile Hook";
-var BRIDGE_EDITOR_DIR = "Assets/Recompile Hook/Editor";
-var BRIDGE_CS_FILENAME = "ClaudeRecompileBridge.cs";
+var TEST_STORE_DIR = path.join(CACHE_DIR, "test-runs");
+var BRIDGE_ASSET_DIR = "Assets/Claude Bridge";
+var BRIDGE_EDITOR_DIR = "Assets/Claude Bridge/Editor";
+var BRIDGE_CS_FILES = [
+  "ClaudeRecompileBridge.cs",
+  "ClaudeBridgeBase.cs",
+  "ClaudeRecompileHandler.cs",
+  "ClaudeTestHandler.cs"
+];
 var BRIDGE_IPC_DIRNAME = "Library/ClaudeHookIPC";
 var BRIDGE_REQUEST_FILENAME = "request.json";
 var BRIDGE_READY_FILENAME = "bridge-ready.json";
+var LEGACY_BRIDGE_ASSET_DIR = "Assets/Recompile Hook";
 var GIT_EXCLUDE_PATTERNS = [
-  "/Assets/Recompile Hook/",
-  "/Assets/Recompile Hook.meta"
+  "/Assets/Claude Bridge/",
+  "/Assets/Claude Bridge.meta"
 ];
 function bridgePaths(projectPath) {
   const ipcDir = path.join(projectPath, BRIDGE_IPC_DIRNAME);
   return {
     bridgeRootDir: path.join(projectPath, BRIDGE_ASSET_DIR),
     bridgeEditorDir: path.join(projectPath, BRIDGE_EDITOR_DIR),
-    bridgeFile: path.join(projectPath, BRIDGE_EDITOR_DIR, BRIDGE_CS_FILENAME),
+    bridgeFiles: BRIDGE_CS_FILES.map(
+      (f) => path.join(projectPath, BRIDGE_EDITOR_DIR, f)
+    ),
     ipcDir,
     requestFile: path.join(ipcDir, BRIDGE_REQUEST_FILENAME),
     readyFile: path.join(ipcDir, BRIDGE_READY_FILENAME),
@@ -21082,30 +21091,42 @@ function log(message) {
 
 // src/lib/bridge/install.ts
 var __dirname = path4.dirname(fileURLToPath(import.meta.url));
-var TEMPLATE_PATH = path4.resolve(
-  __dirname,
-  "..",
-  "..",
-  "..",
-  "templates",
-  "ClaudeRecompileBridge.cs"
-);
+var TEMPLATES_DIR = path4.resolve(__dirname, "..", "..", "..", "templates");
 function ensureBridgeInstalled(projectPath) {
   const paths = bridgePaths(projectPath);
-  const templateContent = fs3.readFileSync(TEMPLATE_PATH, "utf-8");
-  fs3.mkdirSync(paths.bridgeEditorDir, { recursive: true });
-  if (fs3.existsSync(paths.bridgeFile)) {
-    const existing = fs3.readFileSync(paths.bridgeFile, "utf-8");
-    if (existing === templateContent) {
-      log("Bridge already up to date");
-      return { changed: false };
-    }
+  const legacyDir = path4.join(projectPath, LEGACY_BRIDGE_ASSET_DIR);
+  if (fs3.existsSync(legacyDir)) {
+    log("Migrating: removing legacy bridge folder " + legacyDir);
+    fs3.rmSync(legacyDir, { recursive: true, force: true });
+    const legacyMeta = legacyDir + ".meta";
+    if (fs3.existsSync(legacyMeta)) fs3.unlinkSync(legacyMeta);
   }
-  const tmpFile = paths.bridgeFile + ".tmp";
-  fs3.writeFileSync(tmpFile, templateContent);
-  fs3.renameSync(tmpFile, paths.bridgeFile);
-  log(`Bridge installed/updated: ${paths.bridgeFile}`);
-  return { changed: true };
+  fs3.mkdirSync(paths.bridgeEditorDir, { recursive: true });
+  let anyChanged = false;
+  for (const filename of BRIDGE_CS_FILES) {
+    const templatePath = path4.join(TEMPLATES_DIR, filename);
+    const destPath = path4.join(paths.bridgeEditorDir, filename);
+    if (!fs3.existsSync(templatePath)) {
+      log("Template not found, skipping: " + filename);
+      continue;
+    }
+    const templateContent = fs3.readFileSync(templatePath, "utf-8");
+    if (fs3.existsSync(destPath)) {
+      const existing = fs3.readFileSync(destPath, "utf-8");
+      if (existing === templateContent) {
+        continue;
+      }
+    }
+    const tmpFile = destPath + ".tmp";
+    fs3.writeFileSync(tmpFile, templateContent);
+    fs3.renameSync(tmpFile, destPath);
+    log("Bridge installed/updated: " + destPath);
+    anyChanged = true;
+  }
+  if (!anyChanged) {
+    log("All bridge files up to date");
+  }
+  return { changed: anyChanged };
 }
 function ensureGitExclude(projectPath) {
   try {
@@ -21128,7 +21149,7 @@ function ensureGitExclude(projectPath) {
         content += `${pattern}
 `;
         changed = true;
-        log(`Bridge exclude: added ${pattern}`);
+        log("Bridge exclude: added " + pattern);
       }
     }
     if (changed) {
@@ -21561,7 +21582,7 @@ async function getStatus(projectPath, logger = noopLogger2) {
   const protocolVersion = bridgeReadyData?.protocolVersion ?? null;
   let lastRecompileMarker = null;
   try {
-    const markerPath = getMarkerPath(projectPath);
+    const markerPath = getMarkerPath(projectPath, "recompile");
     const stat = fs8.statSync(markerPath);
     lastRecompileMarker = stat.mtime;
   } catch {

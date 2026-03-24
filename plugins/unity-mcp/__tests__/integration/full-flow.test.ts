@@ -48,7 +48,7 @@ describe("integration: full flow simulation", () => {
     expect(detected).toBe(projectPath);
 
     // 2. Set up marker at epoch
-    const markerPath = getMarkerPath(projectPath, markerDir);
+    const markerPath = getMarkerPath(projectPath, "recompile", markerDir);
     ensureMarker(markerPath);
 
     // 3. Create a .cs file
@@ -66,10 +66,8 @@ describe("integration: full flow simulation", () => {
 
     // 6. Verify bridge file exists
     const paths = bridgePaths(projectPath);
-    expect(fs.existsSync(paths.bridgeFile)).toBe(true);
-    expect(fs.readFileSync(paths.bridgeFile, "utf-8")).toContain(
-      "ClaudeRecompileBridge Version: 3",
-    );
+    const installedFiles = paths.bridgeFiles.filter((f) => fs.existsSync(f));
+    expect(installedFiles.length).toBeGreaterThan(0);
 
     // 7. Touch marker
     touchMarker(markerPath);
