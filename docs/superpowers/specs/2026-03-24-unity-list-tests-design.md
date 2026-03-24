@@ -336,7 +336,7 @@ Tests are grouped by assembly for readability. Categories shown in brackets afte
 - `src/lib/bridge/ipc.ts` — add `list_tests_finished` to `TERMINAL_STATES`; update `readBridgeStatus` to route parsed JSON to `testList` when state is `list_tests_finished`
 - `src/core/types.ts` — add `ListTestsResult` type
 - `src/core/test.ts` — update `RunTestsOptions` to use `TestDiscoveryFilters`; update imports
-- `src/core/test-results.ts` — update `GetTestResultsOptions` to use `TestResultFilters`; update imports
+- `src/core/test-results.ts` — no code changes needed (`GetTestResultsOptions` already uses inline types that match `TestResultFilters` shape)
 - `src/mcp/server.ts` — add `unity_list_tests` tool registration; import `listTests`
 
 ### Template version bump
