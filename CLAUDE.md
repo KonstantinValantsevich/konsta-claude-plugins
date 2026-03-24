@@ -1,3 +1,3 @@
 ## Working Directory
 
-Prefer absolute paths over `cd` in Bash commands. Subagents may not share the same cwd reset behavior.
+Never use `cd` in Bash commands — it persists within the project and breaks subsequent commands. Use absolute paths instead.
