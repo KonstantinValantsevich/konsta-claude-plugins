@@ -9,7 +9,7 @@ Add two new MCP tools (`unity_run_tests`, `unity_test_results`) to run Unity tes
 
 ## Goals
 
-- Run Unity tests (EditMode/PlayMode) from MCP with category, class, namespace, and assembly filters
+- Run Unity EditMode tests synchronously from MCP with category, class, namespace, and assembly filters
 - Store full test results on the server side (disk-backed) with run IDs
 - Retrieve results with filtering (by status, name pattern) and adaptive verbosity (summary vs full)
 - Detect staleness via marker files — flag when code changed since last run
@@ -18,7 +18,8 @@ Add two new MCP tools (`unity_run_tests`, `unity_test_results`) to run Unity tes
 
 ## Non-Goals
 
-- Synchronous test execution mode
+- PlayMode test execution (future work — requires handling background editor throttling and `Application.runInBackground`)
+- Async test execution with ICallbacks (not needed — synchronous EditMode execution is sufficient)
 - Real-time streaming of individual test results during a run
 - Test discovery/listing tool (can be added later)
 - CLI fallback for test runs (batch mode) — tests require the Unity editor running
@@ -61,24 +62,24 @@ The `BRIDGE_CS_FILENAME` constant in `config.ts` is replaced by a `BRIDGE_CS_FIL
 
 ### ClaudeTestHandler — C# Implementation
 
+Runs EditMode tests **synchronously** using `runSynchronously = true`. This means `Execute()` blocks until all tests complete — no ICallbacks needed, no intermediate status, no background/focus concerns.
+
+Note: `[UnityTest]` coroutine-based tests are automatically excluded by Unity in synchronous mode (they require multiple frames). Only standard `[Test]` methods run.
+
 ```
 Receives action: "run_tests"
   ↓
-Parses filter payload (testMode, categoryNames, groupNames, assemblyNames)
+Parses filter payload (categoryNames, groupNames, assemblyNames)
   ↓
 Creates TestRunnerApi instance
   ↓
-Registers ICallbacks implementation
+Registers ICallbacks to collect results (RunFinished provides the full result tree)
   ↓
-Builds Filter + ExecutionSettings from payload
+Builds Filter (testMode = EditMode) + ExecutionSettings (runSynchronously = true)
   ↓
-Calls Execute(settings) — returns immediately (async)
+Calls Execute(settings) — blocks until all tests complete
   ↓
-Writes intermediate status: state = "tests_running"
-  ↓
-ICallbacks.TestFinished collects per-test results
-  ↓
-ICallbacks.RunFinished fires
+Walks result tree from RunFinished callback, extracts per-test data
   ↓
 Writes final status: state = "tests_finished" + full results
 ```
@@ -87,7 +88,6 @@ Writes final status: state = "tests_finished" + full results
 
 ```typescript
 interface TestRunPayload {
-  testMode: "EditMode" | "PlayMode" | "Both";
   categoryNames?: string[];
   groupNames?: string[];
   assemblyNames?: string[];
@@ -98,7 +98,7 @@ interface TestRunPayload {
 
 ```typescript
 interface TestBridgeStatus extends BridgeStatusBase {
-  state: "tests_running" | "tests_finished" | "failed";
+  state: "tests_finished" | "failed";
   testResults: {
     totalCount: number;
     passCount: number;
@@ -132,7 +132,6 @@ interface TestResult {
 | Param | Type | Default | Description |
 |---|---|---|---|
 | `projectPath` | `string?` | cached | Unity project path |
-| `testMode` | `enum?` | `"EditMode"` | `"EditMode"`, `"PlayMode"`, or `"Both"` |
 | `categoryNames` | `string[]?` | — | NUnit `[Category]` tags |
 | `groupNames` | `string[]?` | — | Regex patterns for namespace/class/test |
 | `assemblyNames` | `string[]?` | — | Assembly names (without `.dll`) |
@@ -206,7 +205,6 @@ interface StoredTestRun {
   timestamp: string;          // ISO 8601
   projectPath: string;
   filters: {                  // filters used for this run
-    testMode: string;
     categoryNames?: string[];
     groupNames?: string[];
     assemblyNames?: string[];
