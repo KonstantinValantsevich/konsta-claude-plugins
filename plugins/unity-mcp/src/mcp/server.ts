@@ -4,6 +4,8 @@ import { z } from "zod";
 import { recompile } from "../core/recompile.js";
 import { getStatus } from "../core/status.js";
 import { lint } from "../core/lint.js";
+import { runTests } from "../core/test.js";
+import { getTestResults } from "../core/test-results.js";
 import type { Logger } from "../core/types.js";
 import { fileURLToPath } from "node:url";
 import nodePath from "node:path";
@@ -78,6 +80,58 @@ export function createServer(): McpServer {
             ? `Linted ${result.filesLinted} file(s).`
             : "No changed C# files to lint.",
         }],
+      };
+    },
+  );
+
+  server.tool(
+    "unity_run_tests",
+    "Run Unity EditMode tests. Supports filtering by category, class/namespace (regex), and assembly. Returns summary or verbose results.",
+    {
+      projectPath: z.string().describe("Unity project root path"),
+      categoryNames: z.array(z.string()).optional().describe("NUnit [Category] tags to filter by"),
+      groupNames: z.array(z.string()).optional().describe("Regex patterns for namespace/class/test name filtering"),
+      assemblyNames: z.array(z.string()).optional().describe("Assembly names to filter (without .dll)"),
+      verbose: z.boolean().optional().describe("If true, show all test results; if false, show summary + failures only"),
+    },
+    async ({ projectPath, categoryNames, groupNames, assemblyNames, verbose }) => {
+      const result = await runTests({
+        projectPath,
+        categoryNames,
+        groupNames,
+        assemblyNames,
+        verbose,
+        logger: stderrLogger,
+      });
+
+      return {
+        content: [{ type: "text" as const, text: result.formatted }],
+        isError: !result.runId,
+      };
+    },
+  );
+
+  server.tool(
+    "unity_test_results",
+    "Retrieve results from a previous test run. Supports filtering by status, name pattern, and adaptive verbosity. Flags stale results when code has changed.",
+    {
+      projectPath: z.string().describe("Unity project root path"),
+      runId: z.string().optional().describe("Test run ID (defaults to latest)"),
+      verbose: z.boolean().optional().describe("If true, show all test results; if false, show summary + failures only"),
+      statusFilter: z.enum(["passed", "failed", "skipped"]).optional().describe("Filter results by test status"),
+      nameFilter: z.string().optional().describe("Regex pattern to filter by test name"),
+    },
+    async ({ projectPath, runId, verbose, statusFilter, nameFilter }) => {
+      const result = getTestResults({
+        projectPath,
+        runId,
+        verbose,
+        statusFilter,
+        nameFilter,
+      });
+
+      return {
+        content: [{ type: "text" as const, text: result.formatted }],
       };
     },
   );

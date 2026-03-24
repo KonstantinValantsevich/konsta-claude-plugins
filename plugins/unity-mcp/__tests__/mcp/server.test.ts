@@ -4,7 +4,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { createServer } from "../../src/mcp/server.js";
 
 describe("MCP server", () => {
-  it("registers all 3 tools", async () => {
+  it("registers all 5 tools", async () => {
     const server = createServer();
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
 
@@ -18,7 +18,9 @@ describe("MCP server", () => {
     expect(names).toEqual([
       "unity_lint",
       "unity_recompile",
+      "unity_run_tests",
       "unity_status",
+      "unity_test_results",
     ]);
 
     await client.close();

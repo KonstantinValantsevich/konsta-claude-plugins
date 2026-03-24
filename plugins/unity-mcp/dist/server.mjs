@@ -3221,8 +3221,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path8) {
-      let input = path8;
+    function removeDotSegments(path9) {
+      let input = path9;
       const output = [];
       let nextSlash = -1;
       let len = 0;
@@ -3421,8 +3421,8 @@ var require_schemes = __commonJS({
         wsComponent.secure = void 0;
       }
       if (wsComponent.resourceName) {
-        const [path8, query] = wsComponent.resourceName.split("?");
-        wsComponent.path = path8 && path8 !== "/" ? path8 : void 0;
+        const [path9, query] = wsComponent.resourceName.split("?");
+        wsComponent.path = path9 && path9 !== "/" ? path9 : void 0;
         wsComponent.query = query;
         wsComponent.resourceName = void 0;
       }
@@ -6784,12 +6784,12 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats(ajv, list, fs10, exportName) {
+    function addFormats(ajv, list, fs12, exportName) {
       var _a;
       var _b;
       (_a = (_b = ajv.opts.code).formats) !== null && _a !== void 0 ? _a : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list)
-        ajv.addFormat(f, fs10[f]);
+        ajv.addFormat(f, fs12[f]);
     }
     module.exports = exports = formatsPlugin;
     Object.defineProperty(exports, "__esModule", { value: true });
@@ -7275,8 +7275,8 @@ function getErrorMap() {
 
 // node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path8, errorMaps, issueData } = params;
-  const fullPath = [...path8, ...issueData.path || []];
+  const { data, path: path9, errorMaps, issueData } = params;
+  const fullPath = [...path9, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -7392,11 +7392,11 @@ var errorUtil;
 
 // node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path8, key) {
+  constructor(parent, value, path9, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path8;
+    this._path = path9;
     this._key = key;
   }
   get path() {
@@ -11033,10 +11033,10 @@ function assignProp(target, prop, value) {
     configurable: true
   });
 }
-function getElementAtPath(obj, path8) {
-  if (!path8)
+function getElementAtPath(obj, path9) {
+  if (!path9)
     return obj;
-  return path8.reduce((acc, key) => acc?.[key], obj);
+  return path9.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -11356,11 +11356,11 @@ function aborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path8, issues) {
+function prefixIssues(path9, issues) {
   return issues.map((iss) => {
     var _a;
     (_a = iss).path ?? (_a.path = []);
-    iss.path.unshift(path8);
+    iss.path.unshift(path9);
     return iss;
   });
 }
@@ -20995,6 +20995,7 @@ var BRIDGE_VERSION = "4";
 var POLL_INTERVAL_MS = 500;
 var BRIDGE_READY_TIMEOUT_MS = 12e4;
 var BRIDGE_STATUS_TIMEOUT_MS = 12e4;
+var TEST_STATUS_TIMEOUT_MS = 3e5;
 var BRIDGE_BUSY_RETRY_DELAY_MS = 1e3;
 var BRIDGE_MAX_BUSY_RETRIES = 1;
 var CACHE_DIR = path.join(os.homedir(), ".claude", "cache", "unity-recompile");
@@ -21660,6 +21661,164 @@ async function lint(projectPath, logger = noopLogger3) {
   return { filesLinted: files.length, success: true };
 }
 
+// src/core/test.ts
+import fs11 from "node:fs";
+
+// src/lib/test-store.ts
+import fs10 from "node:fs";
+import path8 from "node:path";
+function saveTestRun(run, storeDir = TEST_STORE_DIR) {
+  fs10.mkdirSync(storeDir, { recursive: true });
+  const filePath = path8.join(storeDir, `${run.runId}.json`);
+  const tmpPath = filePath + ".tmp";
+  fs10.writeFileSync(tmpPath, JSON.stringify(run, null, 2));
+  fs10.renameSync(tmpPath, filePath);
+}
+function loadTestRun(runId, storeDir = TEST_STORE_DIR) {
+  const filePath = path8.join(storeDir, `${runId}.json`);
+  try {
+    const content = fs10.readFileSync(filePath, "utf-8");
+    return JSON.parse(content);
+  } catch {
+    return null;
+  }
+}
+function loadLatestTestRun(storeDir = TEST_STORE_DIR) {
+  try {
+    if (!fs10.existsSync(storeDir)) return null;
+    const files = fs10.readdirSync(storeDir).filter((f) => f.endsWith(".json"));
+    if (files.length === 0) return null;
+    let latest = null;
+    for (const file of files) {
+      const content = fs10.readFileSync(path8.join(storeDir, file), "utf-8");
+      const run = JSON.parse(content);
+      if (!latest || run.timestamp > latest.timestamp) {
+        latest = run;
+      }
+    }
+    return latest;
+  } catch {
+    return null;
+  }
+}
+
+// src/core/test-results.ts
+function getTestResults(opts) {
+  const run = opts.runId ? loadTestRun(opts.runId, opts.storeDir) : loadLatestTestRun(opts.storeDir);
+  if (!run) {
+    return { formatted: "No test run found" + (opts.runId ? ` with ID ${opts.runId}` : "") + ".", stale: false };
+  }
+  const markerPath = getMarkerPath(opts.projectPath, "test-run", opts.markerDir);
+  const stale = hasChangedCsFiles(opts.projectPath, markerPath);
+  let tests = run.results.tests;
+  if (opts.statusFilter) {
+    const statusMap = { passed: "Passed", failed: "Failed", skipped: "Skipped" };
+    const target = statusMap[opts.statusFilter];
+    tests = tests.filter((t) => t.status === target);
+  }
+  if (opts.nameFilter) {
+    const re = new RegExp(opts.nameFilter);
+    tests = tests.filter((t) => re.test(t.fullName));
+  }
+  const lines = [];
+  if (stale) {
+    lines.push("WARNING: Results may be stale -- code has changed since this run.\n");
+  }
+  const ts = run.timestamp.replace("T", " ").replace(/\.\d+Z$/, "").replace("Z", "");
+  lines.push(`Run ${run.runId} (${ts})`);
+  lines.push(
+    `Pass: ${run.results.passCount}  Fail: ${run.results.failCount}  Skip: ${run.results.skipCount}  (${run.results.duration.toFixed(1)}s)`
+  );
+  if (opts.verbose) {
+    lines.push("");
+    for (const t of tests) {
+      const icon = t.status === "Passed" ? "PASS" : t.status === "Failed" ? "FAIL" : "SKIP";
+      lines.push(`  [${icon}] ${t.fullName} (${t.duration.toFixed(2)}s)`);
+      if (t.message) lines.push(`    ${t.message}`);
+      if (t.stackTrace) lines.push(`    ${t.stackTrace}`);
+    }
+  } else {
+    const failures = tests.filter((t) => t.status === "Failed");
+    if (failures.length > 0) {
+      lines.push("");
+      lines.push("Failures:");
+      for (const t of failures) {
+        lines.push(`  [FAIL] ${t.fullName} -- ${t.message || "no message"}`);
+      }
+    }
+  }
+  return { formatted: lines.join("\n"), stale };
+}
+
+// src/core/test.ts
+var noopLogger4 = { log() {
+}, error() {
+} };
+async function runTests(opts) {
+  const logger = opts.logger ?? noopLogger4;
+  const projectPath = opts.projectPath;
+  if (!unityIsRunning(projectPath)) {
+    return { runId: "", formatted: "Unity editor must be running to execute tests." };
+  }
+  const paths = bridgePaths(projectPath);
+  if (!bridgeReadyMatchesProject(paths.readyFile, projectPath)) {
+    return { runId: "", formatted: "Bridge is not ready. Run unity_recompile first to initialize the bridge." };
+  }
+  const requestId = generateRequestId();
+  const statusPath = paths.statusFile(requestId);
+  try {
+    fs11.unlinkSync(statusPath);
+  } catch {
+  }
+  const payload = {};
+  if (opts.categoryNames?.length) payload.categoryNames = opts.categoryNames;
+  if (opts.groupNames?.length) payload.groupNames = opts.groupNames;
+  if (opts.assemblyNames?.length) payload.assemblyNames = opts.assemblyNames;
+  const request = {
+    protocolVersion: BRIDGE_PROTOCOL_VERSION,
+    requestId,
+    requestedAtUnixMs: Date.now(),
+    projectPath,
+    action: "run_tests",
+    reason: "unity_run_tests MCP tool",
+    source: "unity-mcp",
+    payload
+  };
+  fs11.mkdirSync(paths.ipcDir, { recursive: true });
+  writeBridgeRequest(paths.requestFile, request);
+  logger.log("Sent run_tests request: " + requestId);
+  const status = await waitForBridgeStatus(statusPath, requestId, TEST_STATUS_TIMEOUT_MS);
+  if (!status) {
+    return { runId: "", formatted: "Timed out waiting for test results (300s)." };
+  }
+  if (status.state === "failed" || status.state === "bridge_error") {
+    return { runId: "", formatted: "Test run failed: " + (status.summary || "unknown error") };
+  }
+  if (!status.testResults) {
+    return { runId: "", formatted: "Bridge returned no test results." };
+  }
+  const runId = "test-" + Date.now();
+  const storedRun = {
+    runId,
+    timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+    projectPath,
+    filters: payload,
+    results: status.testResults
+  };
+  saveTestRun(storedRun, opts.storeDir);
+  const markerPath = getMarkerPath(projectPath, "test-run", opts.markerDir);
+  ensureMarker(markerPath);
+  touchMarker(markerPath);
+  const view = getTestResults({
+    projectPath,
+    runId,
+    verbose: opts.verbose,
+    storeDir: opts.storeDir,
+    markerDir: opts.markerDir
+  });
+  return { runId, formatted: view.formatted };
+}
+
 // src/mcp/server.ts
 import { fileURLToPath as fileURLToPath3 } from "node:url";
 import nodePath from "node:path";
@@ -21729,6 +21888,54 @@ ${errorText}` }],
           type: "text",
           text: result.filesLinted > 0 ? `Linted ${result.filesLinted} file(s).` : "No changed C# files to lint."
         }]
+      };
+    }
+  );
+  server.tool(
+    "unity_run_tests",
+    "Run Unity EditMode tests. Supports filtering by category, class/namespace (regex), and assembly. Returns summary or verbose results.",
+    {
+      projectPath: external_exports.string().describe("Unity project root path"),
+      categoryNames: external_exports.array(external_exports.string()).optional().describe("NUnit [Category] tags to filter by"),
+      groupNames: external_exports.array(external_exports.string()).optional().describe("Regex patterns for namespace/class/test name filtering"),
+      assemblyNames: external_exports.array(external_exports.string()).optional().describe("Assembly names to filter (without .dll)"),
+      verbose: external_exports.boolean().optional().describe("If true, show all test results; if false, show summary + failures only")
+    },
+    async ({ projectPath, categoryNames, groupNames, assemblyNames, verbose }) => {
+      const result = await runTests({
+        projectPath,
+        categoryNames,
+        groupNames,
+        assemblyNames,
+        verbose,
+        logger: stderrLogger
+      });
+      return {
+        content: [{ type: "text", text: result.formatted }],
+        isError: !result.runId
+      };
+    }
+  );
+  server.tool(
+    "unity_test_results",
+    "Retrieve results from a previous test run. Supports filtering by status, name pattern, and adaptive verbosity. Flags stale results when code has changed.",
+    {
+      projectPath: external_exports.string().describe("Unity project root path"),
+      runId: external_exports.string().optional().describe("Test run ID (defaults to latest)"),
+      verbose: external_exports.boolean().optional().describe("If true, show all test results; if false, show summary + failures only"),
+      statusFilter: external_exports.enum(["passed", "failed", "skipped"]).optional().describe("Filter results by test status"),
+      nameFilter: external_exports.string().optional().describe("Regex pattern to filter by test name")
+    },
+    async ({ projectPath, runId, verbose, statusFilter, nameFilter }) => {
+      const result = getTestResults({
+        projectPath,
+        runId,
+        verbose,
+        statusFilter,
+        nameFilter
+      });
+      return {
+        content: [{ type: "text", text: result.formatted }]
       };
     }
   );
