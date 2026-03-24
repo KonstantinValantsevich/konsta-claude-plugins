@@ -1,4 +1,4 @@
-// ClaudeTestHandler Version: 4
+// ClaudeTestHandler Version: 5
 using System;
 using System.Collections.Generic;
 using UnityEditor;
@@ -48,6 +48,8 @@ internal static class ClaudeTestHandler
         public int InconclusiveCount;
         public double TotalDuration;
 
+        public ClaudeBridgeBase.RequestPayload Request;
+
         public void RunStarted(ITestAdaptor testsToRun) { }
         public void TestStarted(ITestAdaptor test) { }
 
@@ -79,7 +81,42 @@ internal static class ClaudeTestHandler
             TotalDuration += result.Duration;
         }
 
-        public void RunFinished(ITestResultAdaptor result) { }
+        public void RunFinished(ITestResultAdaptor result)
+        {
+            try
+            {
+                var resultsPayload = new TestResultsPayload
+                {
+                    totalCount = Results.Count,
+                    passCount = PassCount,
+                    failCount = FailCount,
+                    skipCount = SkipCount,
+                    inconclusiveCount = InconclusiveCount,
+                    duration = TotalDuration,
+                    tests = Results,
+                };
+
+                string resultsJson = JsonUtility.ToJson(resultsPayload, true);
+
+                ClaudeBridgeBase.WriteStatus(
+                    Request, "tests_finished", false,
+                    FailCount == 0,
+                    FailCount == 0
+                        ? "All tests passed (" + Results.Count + " total)"
+                        : FailCount + " test(s) failed out of " + Results.Count,
+                    null,
+                    resultsJson
+                );
+            }
+            catch (Exception ex)
+            {
+                ClaudeBridgeBase.WriteStatus(Request, "failed", false, false, "Test run failed: " + ex.Message);
+            }
+            finally
+            {
+                ClaudeBridgeBase.FinalizeRequest(Request);
+            }
+        }
     }
 
     internal static void Register()
@@ -116,44 +153,18 @@ internal static class ClaudeTestHandler
 
             var settings = new ExecutionSettings(filter)
             {
-                runSynchronously = true,
+                runSynchronously = false,
             };
 
-            var collector = new ResultCollector();
+            var collector = new ResultCollector { Request = request };
             var api = ScriptableObject.CreateInstance<TestRunnerApi>();
             api.RegisterCallbacks(collector);
 
             api.Execute(settings);
-
-            var resultsPayload = new TestResultsPayload
-            {
-                totalCount = collector.Results.Count,
-                passCount = collector.PassCount,
-                failCount = collector.FailCount,
-                skipCount = collector.SkipCount,
-                inconclusiveCount = collector.InconclusiveCount,
-                duration = collector.TotalDuration,
-                tests = collector.Results,
-            };
-
-            string resultsJson = JsonUtility.ToJson(resultsPayload, true);
-
-            ClaudeBridgeBase.WriteStatus(
-                request, "tests_finished", false,
-                collector.FailCount == 0,
-                collector.FailCount == 0
-                    ? "All tests passed (" + collector.Results.Count + " total)"
-                    : collector.FailCount + " test(s) failed out of " + collector.Results.Count,
-                null,
-                resultsJson
-            );
         }
         catch (Exception ex)
         {
             ClaudeBridgeBase.WriteStatus(request, "failed", false, false, "Test run failed: " + ex.Message);
-        }
-        finally
-        {
             ClaudeBridgeBase.FinalizeRequest(request);
         }
     }

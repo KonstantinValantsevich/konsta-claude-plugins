@@ -157,14 +157,16 @@ describe("E2E: live MCP against solitaire", () => {
       "{",
       "    public class LintTestTemp",
       "    {",
-      '        private string   _foo= "bar" ;',  // extra spaces, no space before =
-      "        public void DoStuff( ){",           // space inside parens
-      "            var x=1;",                      // no spaces around =
-      '            var y  =   new   List<string>( ) ;', // excessive spacing
-      "            if(x==1)",                      // no space after if
-      "            {",
-      "                Console.WriteLine( _foo+y.Count ) ;",
-      "            }",
+      '        private string   _foo= "bar" ;',           // extra spaces, missing space before =
+      "        public void DoStuff( ){",                    // space inside parens
+      "            var x=1;",                               // no spaces around =
+      '            var y  =   new   List<string>( ) ;',    // excessive spacing
+      "            if(x==1)",                               // no space after if
+      "                Console.WriteLine(_foo);",           // braceless if body
+      "            for(var i=0;i<x;i++)",                   // braceless for, missing spaces
+      "                Console.WriteLine(i);",
+      "            while(x>0)",                             // braceless while
+      "                x--;",
       "        }",
       "    }",
       "}",
@@ -195,9 +197,24 @@ describe("E2E: live MCP against solitaire", () => {
       expect(isError).toBeFalsy();
       expect(text).toMatch(/Linted 1 file/);
 
-      // 3. Verify jb actually changed the file
+      // 3. Verify jb actually fixed the violations
       const after = fs.readFileSync(LINT_FILE, "utf-8");
       expect(after).not.toBe(UGLY_CS);
+
+      // Spacing fixes
+      expect(after).toContain('_foo = "bar"');   // spaces around =
+      expect(after).toContain("var x = 1;");     // spaces around =
+      expect(after).toMatch(/if \(/);            // space after if
+      expect(after).toMatch(/for \(/);           // space after for
+      expect(after).toMatch(/while \(/);         // space after while
+      expect(after).toContain("DoStuff()");      // no space inside parens
+
+      // Braces added to single-line if/for/while bodies
+      // Ugly file has braceless: if(...)  Console..., for(...)  Console..., while(...)  x--
+      // After cleanup each should have { } wrapping the body
+      expect(after).toMatch(/if\s*\([^)]+\)\s*\{/);    // if (...) {
+      expect(after).toMatch(/for\s*\([^)]+\)\s*\{/);   // for (...) {
+      expect(after).toMatch(/while\s*\([^)]+\)\s*\{/); // while (...) {
     }, 130_000);
 
     it("runs without error when no files changed", async () => {

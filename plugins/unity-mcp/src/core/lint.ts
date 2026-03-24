@@ -69,6 +69,7 @@ export async function lint(
   if (fs.existsSync(SETTINGS_PATH)) {
     args.push(`--settings=${SETTINGS_PATH}`);
   }
+  args.push("--profile=Built-in: Full Cleanup");
   args.push("--verbosity=WARN");
 
   try {
