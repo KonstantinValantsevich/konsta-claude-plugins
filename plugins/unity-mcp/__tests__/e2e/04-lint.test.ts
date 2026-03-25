@@ -66,9 +66,6 @@ describe("Phase 04 — Lint", () => {
       // Read the file after lint and verify improvements
       const after = fs.readFileSync(filePath, "utf-8");
 
-      // Braces added to if/for/foreach/while
-      expect(after).not.toMatch(/if\s*\([^)]+\)\s*\n\s*[^{]/);
-
       // Modifier order corrected: "static public" → "public static"
       expect(after).not.toContain("static public");
 
@@ -78,6 +75,12 @@ describe("Phase 04 — Lint", () => {
         (l) => (l.match(/Debug\.Log/g) || []).length > 1,
       );
       expect(multiStatement).toBe(false);
+
+      // Spacing fixed: no more "if(" or "for(" — should be "if (" or "for ("
+      expect(after).not.toMatch(/\bif\(/);
+      expect(after).not.toMatch(/\bfor\(/);
+      expect(after).not.toMatch(/\bforeach\(/);
+      expect(after).not.toMatch(/\bwhile\(/);
     });
   });
 });
