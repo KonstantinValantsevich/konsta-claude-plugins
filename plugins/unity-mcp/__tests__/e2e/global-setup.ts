@@ -14,7 +14,7 @@ import { writeState, readState, cleanupState } from "./helpers/state.js";
 
 /** E2E project lives in the plugin root. */
 const PLUGIN_ROOT = path.resolve(import.meta.dirname, "..", "..");
-const PROJECT_DIR = path.join(PLUGIN_ROOT, ".e2e-project");
+const PROJECT_DIR = path.join(PLUGIN_ROOT, "e2e-project");
 
 /** Synchronous cleanup — safe to call from signal handlers and process.on('exit'). */
 function emergencyCleanup(): void {
