@@ -105,6 +105,7 @@ describe("Phase 03 — Tests", () => {
 
     const text = await mcp.callTool("unity_run_tests", {
       categoryNames: ["Slow"],
+      verbose: true,
     });
     expect(text).toContain("SlowTest");
     // Should not run the failing test (different category)
@@ -112,7 +113,7 @@ describe("Phase 03 — Tests", () => {
   });
 
   it("test 14: retrieve previous results", async () => {
-    const text = await mcp.callTool("unity_test_results");
+    const text = await mcp.callTool("unity_test_results", { verbose: true });
     // Should return results from last run
     expect(text).toContain("SlowTest");
   });
