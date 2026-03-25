@@ -33,6 +33,7 @@ var BRIDGE_VERSION = "4";
 var POLL_INTERVAL_MS = 500;
 var BRIDGE_READY_TIMEOUT_MS = 12e4;
 var BRIDGE_STATUS_TIMEOUT_MS = 12e4;
+var TEST_STATUS_TIMEOUT_MS = 3e5;
 var BRIDGE_BUSY_RETRY_DELAY_MS = 1e3;
 var BRIDGE_MAX_BUSY_RETRIES = 1;
 var CACHE_DIR = path2.join(os.homedir(), ".claude", "cache", "unity-recompile");
@@ -197,9 +198,6 @@ function ensureGitExclude(projectPath) {
   }
 }
 
-// src/lib/bridge/orchestrate.ts
-import fs7 from "node:fs";
-
 // src/lib/compile/applescript.ts
 import { execSync as execSync3 } from "node:child_process";
 function findUnityPid(projectPath) {
@@ -326,6 +324,9 @@ function runCliFallback(projectPath) {
     };
   }
 }
+
+// src/lib/bridge/request.ts
+import fs7 from "node:fs";
 
 // src/lib/bridge/ipc.ts
 import crypto2 from "node:crypto";
@@ -464,9 +465,38 @@ async function waitForBridgeStatus(statusPath, requestId, timeoutMs) {
   return null;
 }
 
-// src/lib/bridge/orchestrate.ts
-async function bridgeRequestAndWait(projectPath, action, timeoutMs) {
+// src/lib/bridge/request.ts
+function defaultTimeout(action) {
+  if (action === "run_tests" || action === "list_tests") return TEST_STATUS_TIMEOUT_MS;
+  return BRIDGE_STATUS_TIMEOUT_MS;
+}
+function reasonForAction(action) {
+  if (action === "bootstrap_handshake") return "bridge bootstrap handshake";
+  return `unity_${action} MCP tool`;
+}
+async function sendBridgeRequest(projectPath, action, opts) {
+  if (!unityIsRunning(projectPath)) {
+    return { ok: false, error: "unity_not_running", message: "Unity editor is not running." };
+  }
   const paths = bridgePaths(projectPath);
+  ensureBridgeInstalled(projectPath);
+  ensureGitExclude(projectPath);
+  fs7.mkdirSync(paths.ipcDir, { recursive: true });
+  if (!bridgeReadyMatchesProject(paths.readyFile, projectPath)) {
+    log("Bridge not ready, starting bootstrap flow");
+    triggerEditorRefreshOnly(projectPath);
+    const ready = await waitForBridgeReady(paths.readyFile, projectPath, BRIDGE_READY_TIMEOUT_MS);
+    if (!ready) {
+      return { ok: false, error: "bridge_bootstrap_failed", message: "Bridge did not become ready after bootstrap refresh." };
+    }
+    const handshakeResult = await sendRawRequest(projectPath, paths, "bootstrap_handshake");
+    if (!handshakeResult.ok) return handshakeResult;
+    log("Bridge bootstrap handshake succeeded");
+  }
+  return sendRawRequest(projectPath, paths, action, opts);
+}
+async function sendRawRequest(projectPath, paths, action, opts) {
+  const timeoutMs = opts?.timeoutMs ?? defaultTimeout(action);
   let attempt = 0;
   while (true) {
     const requestId = generateRequestId();
@@ -481,86 +511,39 @@ async function bridgeRequestAndWait(projectPath, action, timeoutMs) {
       requestedAtUnixMs: Date.now(),
       projectPath,
       action,
-      reason: "claude-stop-hook",
-      source: "unity-recompile-ts"
+      reason: reasonForAction(action),
+      source: "unity-mcp",
+      payload: opts?.payload
     };
-    fs7.mkdirSync(paths.ipcDir, { recursive: true });
     writeBridgeRequest(paths.requestFile, request);
     const status = await waitForBridgeStatus(statusPath, requestId, timeoutMs);
     if (!status) {
+      return { ok: false, error: "request_timeout", message: `Timed out waiting for bridge response (${action}).` };
+    }
+    if (status.bridgeVersion !== BRIDGE_VERSION || status.protocolVersion !== BRIDGE_PROTOCOL_VERSION) {
       return {
-        success: false,
-        didCompile: false,
-        errors: [`Timed out waiting for bridge status (${action})`]
+        ok: false,
+        error: "version_mismatch",
+        message: `Bridge version mismatch (got version=${status.bridgeVersion} protocol=${status.protocolVersion}).`
       };
     }
-    const result = parseBridgeStatusToResult(status);
     if (status.state === "busy" && attempt < BRIDGE_MAX_BUSY_RETRIES) {
       attempt++;
       log(`Bridge busy, retrying action=${action} attempt=${attempt}`);
       await sleep(BRIDGE_BUSY_RETRY_DELAY_MS);
       continue;
     }
-    return result;
-  }
-}
-async function runBridgeBootstrapAndRecompile(projectPath) {
-  log("Bridge bootstrap flow starting");
-  const paths = bridgePaths(projectPath);
-  if (!unityIsRunning(projectPath)) {
-    log("Bridge bootstrap unavailable: Unity editor not running");
-    return {
-      success: false,
-      didCompile: false,
-      errors: ["Unity Editor is not running, cannot bootstrap bridge IPC"]
-    };
-  }
-  triggerEditorRefreshOnly(projectPath);
-  const ready = await waitForBridgeReady(
-    paths.readyFile,
-    projectPath,
-    BRIDGE_READY_TIMEOUT_MS
-  );
-  if (!ready) {
-    return {
-      success: false,
-      didCompile: false,
-      errors: ["Bridge did not become ready after bootstrap refresh"]
-    };
-  }
-  const handshake = await bridgeRequestAndWait(
-    projectPath,
-    "bootstrap_handshake",
-    BRIDGE_READY_TIMEOUT_MS
-  );
-  if (!handshake.success) return handshake;
-  log("Bridge bootstrap handshake succeeded, requesting authoritative recompile");
-  return bridgeRequestAndWait(projectPath, "recompile", BRIDGE_STATUS_TIMEOUT_MS);
-}
-async function runBridgeRecompileDirect(projectPath) {
-  if (!unityIsRunning(projectPath)) return null;
-  const paths = bridgePaths(projectPath);
-  if (!bridgeReadyMatchesProject(paths.readyFile, projectPath)) return null;
-  log("Bridge direct recompile flow");
-  return bridgeRequestAndWait(projectPath, "recompile", BRIDGE_STATUS_TIMEOUT_MS);
-}
-async function orchestrateRecompile(projectPath, bridgeChangedThisRun) {
-  if (unityIsRunning(projectPath)) {
-    log("Unity IS running");
-    if (bridgeChangedThisRun) {
-      log("Bridge changed this run; using bootstrap flow");
-      return runBridgeBootstrapAndRecompile(projectPath);
+    if (status.state === "busy") {
+      return { ok: false, error: "bridge_busy", message: "Bridge is busy and retries exhausted." };
     }
-    const direct = await runBridgeRecompileDirect(projectPath);
-    if (direct) {
-      log("Bridge ready; used direct bridge path");
-      return direct;
+    if (status.state === "bridge_error") {
+      return { ok: false, error: "bridge_error", message: status.summary || "Bridge error." };
     }
-    log("Bridge not ready; using bootstrap flow");
-    return runBridgeBootstrapAndRecompile(projectPath);
+    if (status.state === "failed") {
+      return { ok: false, error: "compilation_failed", message: status.summary || "Compilation failed." };
+    }
+    return { ok: true, status };
   }
-  log("Unity NOT running, using CLI fallback");
-  return runCliFallback(projectPath);
 }
 
 // src/core/recompile.ts
@@ -571,22 +554,41 @@ async function recompile(projectPath, logger2 = noopLogger) {
   fs8.mkdirSync(MARKER_DIR, { recursive: true });
   const markerPath = getMarkerPath(projectPath, "recompile");
   ensureMarker(markerPath);
-  const paths = bridgePaths(projectPath);
-  ensureGitExclude(projectPath);
-  fs8.mkdirSync(paths.ipcDir, { recursive: true });
   const { changed: bridgeChangedThisRun } = ensureBridgeInstalled(projectPath);
+  ensureGitExclude(projectPath);
   const csChanged = hasChangedCsFiles(projectPath, markerPath);
   if (!csChanged && !bridgeChangedThisRun) {
     logger2.log("No .cs files changed since last check");
     return { success: true, skipped: true, errors: [] };
   }
   logger2.log(bridgeChangedThisRun ? "Bridge updated, triggering recompilation" : "C# files changed, triggering recompilation");
-  const result = await orchestrateRecompile(projectPath, bridgeChangedThisRun);
-  if (result.success || result.didCompile) {
+  let compileErrors;
+  let success;
+  let didCompile;
+  if (unityIsRunning(projectPath)) {
+    const result = await sendBridgeRequest(projectPath, "recompile");
+    if (!result.ok) {
+      return {
+        success: false,
+        skipped: false,
+        errors: [{ assembly: "", file: "", line: 0, column: 0, message: result.message, type: "error" }]
+      };
+    }
+    const parsed = parseBridgeStatusToResult(result.status);
+    success = parsed.success;
+    didCompile = parsed.didCompile;
+    compileErrors = parsed.errors;
+  } else {
+    const cliResult = await runCliFallback(projectPath);
+    success = cliResult.success;
+    didCompile = cliResult.didCompile;
+    compileErrors = cliResult.errors;
+  }
+  if (success || didCompile) {
     touchMarker(markerPath);
     logger2.log("Marker file updated");
   }
-  const errors = result.errors.map((errStr) => {
+  const errors = compileErrors.map((errStr) => {
     const match = errStr.match(/^(.+)\((\d+),(\d+)\):\s*(.+)$/);
     if (match) {
       return {
@@ -600,11 +602,7 @@ async function recompile(projectPath, logger2 = noopLogger) {
     }
     return { assembly: "", file: "", line: 0, column: 0, message: errStr, type: "error" };
   });
-  return {
-    success: result.success,
-    skipped: false,
-    errors
-  };
+  return { success, skipped: false, errors };
 }
 
 // node_modules/diff/libesm/diff/base.js
@@ -1096,6 +1094,11 @@ function filterHunks(original, linted, allowedRanges) {
 async function lint(projectPath, options = {}) {
   const logger2 = options.logger ?? noopLogger2;
   const bufferLines = options.bufferLines ?? 3;
+  const compileResult = await recompile(projectPath, logger2);
+  if (!compileResult.success && !compileResult.skipped) {
+    logger2.error("Recompilation failed before lint");
+    return { filesLinted: 0, success: false };
+  }
   try {
     await execAsync("which jb", { timeout: 5e3 });
   } catch {
