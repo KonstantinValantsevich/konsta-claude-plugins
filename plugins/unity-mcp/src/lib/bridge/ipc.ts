@@ -99,13 +99,6 @@ export function parseBridgeStatusToResult(status: BridgeStatus): CompileResult {
       ],
     };
   }
-  if (status.state === "busy") {
-    return {
-      success: false,
-      didCompile: false,
-      errors: [status.summary || "Bridge is busy"],
-    };
-  }
   if (status.state === "bridge_error" || status.state === "timeout") {
     return {
       success: false,
@@ -135,7 +128,6 @@ const TERMINAL_STATES = new Set([
   "completed",
   "failed",
   "bridge_error",
-  "busy",
   "timeout",
   "tests_finished",
   "list_tests_finished",

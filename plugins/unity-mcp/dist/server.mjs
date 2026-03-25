@@ -21363,13 +21363,6 @@ function parseBridgeStatusToResult(status) {
       ]
     };
   }
-  if (status.state === "busy") {
-    return {
-      success: false,
-      didCompile: false,
-      errors: [status.summary || "Bridge is busy"]
-    };
-  }
   if (status.state === "bridge_error" || status.state === "timeout") {
     return {
       success: false,
@@ -21396,7 +21389,6 @@ var TERMINAL_STATES = /* @__PURE__ */ new Set([
   "completed",
   "failed",
   "bridge_error",
-  "busy",
   "timeout",
   "tests_finished",
   "list_tests_finished"

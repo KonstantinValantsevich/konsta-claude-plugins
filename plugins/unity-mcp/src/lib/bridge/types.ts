@@ -57,7 +57,6 @@ export interface BridgeStatus {
     | "completed"
     | "failed"
     | "bridge_error"
-    | "busy"
     | "timeout"
     | "tests_finished"
     | "list_tests_finished";
@@ -117,7 +116,6 @@ export type BridgeResult =
 export type BridgeError =
   | "unity_not_running"
   | "bridge_bootstrap_failed"
-  | "bridge_busy"
   | "bridge_error"
   | "compilation_failed"
   | "version_mismatch"
