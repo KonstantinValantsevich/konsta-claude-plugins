@@ -5,6 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Logger, LintResult, LintOptions } from "./types.js";
+import { recompile } from "./recompile.js";
 
 const execFileAsync = promisify(execFile);
 const execAsync = promisify(exec);
@@ -185,6 +186,13 @@ export async function lint(
 ): Promise<LintResult> {
   const logger = options.logger ?? noopLogger;
   const bufferLines = options.bufferLines ?? 3;
+
+  // Recompile first to ensure consistent state
+  const compileResult = await recompile(projectPath, logger);
+  if (!compileResult.success && !compileResult.skipped) {
+    logger.error("Recompilation failed before lint");
+    return { filesLinted: 0, success: false };
+  }
 
   // Check if jb is available
   try {

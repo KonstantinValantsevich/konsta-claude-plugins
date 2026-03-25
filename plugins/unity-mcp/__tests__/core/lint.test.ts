@@ -1,8 +1,13 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+
+vi.mock("../../src/core/recompile.js", () => ({
+  recompile: vi.fn(() => Promise.resolve({ success: true, skipped: true, errors: [] })),
+}));
+
 import { lint, expandAndMerge, getEditedLineRanges, filterHunks } from "../../src/core/lint.js";
 
 describe("expandAndMerge", () => {
