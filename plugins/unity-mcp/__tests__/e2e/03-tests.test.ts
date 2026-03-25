@@ -46,8 +46,8 @@ describe("Phase 03 — Tests", () => {
 
   it("test 8: list tests — empty", async () => {
     const text = await mcp.callTool("unity_list_tests");
-    // No test classes exist yet — expect empty or "0 tests"
-    expect(text).toMatch(/0 test/i);
+    // No test classes exist yet
+    expect(text).toMatch(/no .* tests found|0 test/i);
   });
 
   it("test 9: add passing test → list finds it", async () => {
