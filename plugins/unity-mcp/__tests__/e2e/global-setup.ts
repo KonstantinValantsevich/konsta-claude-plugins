@@ -64,7 +64,14 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   createUnityProject(unityBinaryPath(version), PROJECT_DIR);
   console.log("[E2E] Unity project created");
 
-  // 5. Add Unity .gitignore so Library/, Temp/, Logs/ are never tracked
+  // 5. Add test-framework package (required for TestRunner API in bridge)
+  const manifestPath = path.join(PROJECT_DIR, "Packages", "manifest.json");
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8"));
+  manifest.dependencies["com.unity.test-framework"] = "1.4.5";
+  fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+  console.log("[E2E] Added com.unity.test-framework package");
+
+  // 6. Add Unity .gitignore so Library/, Temp/, Logs/ are never tracked
   fs.writeFileSync(path.join(PROJECT_DIR, ".gitignore"), [
     "/[Ll]ibrary/",
     "/[Tt]emp/",
