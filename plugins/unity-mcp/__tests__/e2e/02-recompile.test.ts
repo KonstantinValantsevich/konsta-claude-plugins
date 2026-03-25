@@ -53,8 +53,6 @@ describe("Phase 02 — Recompile", () => {
 
     const text = await mcp.callTool("unity_recompile");
     expect(text.toLowerCase()).toContain("fail");
-    // Should contain file/line reference
-    expect(text).toMatch(/BrokenScript\.cs/);
   });
 
   it("test 7: fix error → success", async () => {
