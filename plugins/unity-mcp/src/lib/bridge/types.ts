@@ -103,3 +103,22 @@ export interface CompileResult {
   didCompile: boolean;
   errors: string[];
 }
+
+// --- Bridge-Aware IPC Layer types ---
+
+/** Actions that tools may request via sendBridgeRequest. */
+export type BridgeAction = "recompile" | "run_tests" | "list_tests";
+
+/** Discriminated union returned by sendBridgeRequest. */
+export type BridgeResult =
+  | { ok: true; status: BridgeStatus }
+  | { ok: false; error: BridgeError; message: string };
+
+export type BridgeError =
+  | "unity_not_running"
+  | "bridge_bootstrap_failed"
+  | "bridge_busy"
+  | "bridge_error"
+  | "compilation_failed"
+  | "version_mismatch"
+  | "request_timeout";
