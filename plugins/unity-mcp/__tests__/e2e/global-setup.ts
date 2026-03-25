@@ -1,6 +1,5 @@
 import fs from "node:fs";
 import path from "node:path";
-import os from "node:os";
 import { execSync } from "node:child_process";
 import {
   findLatestUnityVersion,
@@ -9,9 +8,13 @@ import {
   openUnityEditor,
   waitForUnityProcess,
   isJbAvailable,
+  closeUnity,
 } from "./helpers/unity.js";
 import { writeState, readState, cleanupState } from "./helpers/state.js";
-import { closeUnity } from "./helpers/unity.js";
+
+/** E2E project lives in the plugin root, persists across runs. */
+const PLUGIN_ROOT = path.resolve(import.meta.dirname, "..", "..");
+const PROJECT_DIR = path.join(PLUGIN_ROOT, ".e2e-project");
 
 export default async function globalSetup(): Promise<() => Promise<void>> {
   console.log("[E2E] Starting global setup...");
@@ -24,36 +27,46 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   const jbAvailable = isJbAvailable();
   console.log(`[E2E] jb CLI available: ${jbAvailable}`);
 
-  // 3. Create temp project
-  const projectDir = fs.mkdtempSync(
-    path.join(os.tmpdir(), "unity-mcp-e2e-"),
-  );
-  console.log(`[E2E] Creating Unity project at: ${projectDir}`);
-  createUnityProject(unityBinaryPath(version), projectDir);
-  console.log("[E2E] Unity project created");
+  // 3. Create project if it doesn't exist
+  if (!fs.existsSync(path.join(PROJECT_DIR, "ProjectSettings"))) {
+    console.log(`[E2E] Creating Unity project at: ${PROJECT_DIR}`);
+    fs.mkdirSync(PROJECT_DIR, { recursive: true });
+    createUnityProject(unityBinaryPath(version), PROJECT_DIR);
+    console.log("[E2E] Unity project created");
+  } else {
+    console.log(`[E2E] Reusing existing project at: ${PROJECT_DIR}`);
+  }
 
-  // 4. Init git repo (before editor, so .git exists)
-  execSync("git init", { cwd: projectDir, stdio: "ignore" });
+  // 4. Init git repo if needed
+  if (!fs.existsSync(path.join(PROJECT_DIR, ".git"))) {
+    execSync("git init", { cwd: PROJECT_DIR, stdio: "ignore" });
+    execSync("git add -A", { cwd: PROJECT_DIR, stdio: "ignore" });
+    execSync('git commit -m "initial"', { cwd: PROJECT_DIR, stdio: "ignore" });
+    execSync("git tag e2e-baseline", { cwd: PROJECT_DIR, stdio: "ignore" });
+    console.log("[E2E] Git initialized with e2e-baseline tag");
+  }
 
   // 5. Open editor (non-batch)
   console.log("[E2E] Opening Unity Editor...");
-  openUnityEditor(unityBinaryPath(version), projectDir);
+  openUnityEditor(unityBinaryPath(version), PROJECT_DIR);
 
   // 6. Wait for Unity process to appear
-  const pid = await waitForUnityProcess(projectDir);
+  const pid = await waitForUnityProcess(PROJECT_DIR);
   console.log(`[E2E] Unity process detected: PID ${pid}`);
 
-  // 7. Let Unity settle (writes Library/, Logs/, etc.), then snapshot baseline
-  console.log("[E2E] Waiting for Unity to settle...");
-  await new Promise((r) => setTimeout(r, 15_000));
-  execSync("git add -A", { cwd: projectDir, stdio: "ignore" });
-  execSync('git commit -m "initial"', { cwd: projectDir, stdio: "ignore" });
-  execSync("git tag e2e-baseline", { cwd: projectDir, stdio: "ignore" });
-  console.log("[E2E] Git initialized with e2e-baseline tag");
+  // 7. Re-tag baseline if tag is missing (project existed but git was re-initialized)
+  try {
+    execSync("git rev-parse e2e-baseline", { cwd: PROJECT_DIR, stdio: "ignore" });
+  } catch {
+    execSync("git add -A", { cwd: PROJECT_DIR, stdio: "ignore" });
+    execSync('git commit --allow-empty -m "initial"', { cwd: PROJECT_DIR, stdio: "ignore" });
+    execSync("git tag e2e-baseline", { cwd: PROJECT_DIR, stdio: "ignore" });
+    console.log("[E2E] Re-created e2e-baseline tag");
+  }
 
   // 8. Write shared state
   writeState({
-    projectPath: projectDir,
+    projectPath: PROJECT_DIR,
     unityVersion: version,
     unityPid: pid,
     jbAvailable,
@@ -61,7 +74,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
 
   console.log("[E2E] Global setup complete");
 
-  // Return teardown function
+  // Return teardown function — close Unity but keep the project for reuse
   return async () => {
     console.log("[E2E] Starting global teardown...");
     try {
@@ -70,11 +83,6 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
         console.log(`[E2E] Closing Unity (PID ${state.unityPid})...`);
         closeUnity(state.unityPid);
         console.log("[E2E] Unity closed");
-      }
-      if (state.projectPath) {
-        console.log(`[E2E] Deleting project: ${state.projectPath}`);
-        fs.rmSync(state.projectPath, { recursive: true, force: true });
-        console.log("[E2E] Project deleted");
       }
       cleanupState();
     } catch {
