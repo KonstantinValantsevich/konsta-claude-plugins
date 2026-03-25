@@ -15,11 +15,12 @@ End-to-end tests that create a real Unity project, open Unity Editor (non-batch 
 Single Unity Editor instance for the entire E2E suite:
 
 1. **Find Unity** — scan `/Applications/Unity/Hub/Editor/` for installed versions, pick latest (semver sort)
-2. **Create project** — `/Applications/Unity/Hub/Editor/<VERSION>/Unity.app/Contents/MacOS/Unity -createProject <tmpDir> -quit -batchmode`
-3. **Init git** — `git init && git add -A && git commit -m "initial"` (required for lint's `git diff HEAD` and change detection)
-4. **Tag baseline** — `git tag e2e-baseline` (clean restore point for each phase)
-5. **Open editor** — `open -a "...Unity.app" --args -projectPath <tmpDir>` (non-batch mode)
-6. **Wait for ready** — poll `ps aux` until Unity process detected for project path
+2. **Check prerequisites** — verify `jb` CLI is available (`which jb`); if missing, mark lint phase for skip
+3. **Create project** — `/Applications/Unity/Hub/Editor/<VERSION>/Unity.app/Contents/MacOS/Unity -createProject <tmpDir> -quit -batchmode`
+4. **Init git** — `git init && git add -A && git commit -m "initial"` (required for lint's `git diff HEAD` and change detection)
+5. **Tag baseline** — `git tag e2e-baseline` (clean restore point for each phase)
+6. **Open editor** — `open -a "...Unity.app" --args -projectPath <tmpDir>` (non-batch mode)
+7. **Wait for ready** — poll `ps aux` until Unity process detected for project path, then wait for Unity Editor.log to contain "Refresh completed" (ensures project is fully loaded and can respond to bridge requests)
 
 Teardown:
 1. Close Unity (kill process)
@@ -31,21 +32,23 @@ Tests call tools through the real MCP protocol:
 - Spawn MCP server as child process (`node dist/server.mjs`)
 - Connect via MCP SDK `Client` + `StdioClientTransport`
 - Each test file creates its own client in `beforeAll`, closes in `afterAll`
-- `callTool(name, args)` wrapper returns MCP tool result content
+- `callTool(name, args)` wrapper that auto-injects `projectPath` from shared state into every tool call, returns MCP tool result content (text). Callers pass only tool-specific args; `projectPath` is always added automatically. For tests that need a different path (e.g., invalid path test), an explicit override is supported.
 
 ### Cross-Phase Isolation
 
 Each test file's `beforeAll` resets to baseline:
 ```
-git reset --hard e2e-baseline && git clean -fd
+git reset --hard e2e-baseline && git clean -fdx
 ```
 
-This makes phases fully independent — each starts from the clean Unity project state regardless of what previous phases did. Each phase writes its own C# files and recompiles as needed.
+Uses `-fdx` (not `-fd`) to also remove git-excluded files like `Assets/Claude Bridge/` (which is added to `.git/info/exclude` by `ensureGitExclude`). This ensures each phase starts from a truly clean state.
+
+Each phase writes its own C# files and recompiles as needed.
 
 ### Failure Strategy
 
-- **Within a file**: sequential execution, bail on first failure — remaining tests in the phase are skipped
-- **Cross-file**: independent due to git baseline reset — one phase failing doesn't cascade
+- **Suite-wide bail**: `bail: 1` in vitest config — any test failure stops the entire E2E suite. This is intentional: E2E tests are slow, and cascading failures from broken project state waste time. Each test within a file depends on the state left by the previous test.
+- **Cross-phase isolation via git reset** still applies — if re-running a specific phase file during development, it starts clean.
 
 ### Test Phases
 
@@ -55,7 +58,7 @@ This makes phases fully independent — each starts from the clean Unity project
 |---|------|-------------|
 | 1 | First tool call installs bridge | Call `unity_recompile` → bridge files appear in `Assets/Claude Bridge/Editor/`, recompile succeeds |
 | 2 | Status shows bridge ready | `unity_status` → `editorRunning: true`, `bridgeReady: true`, correct `unityVersion` and `bridgeVersion` |
-| 3 | Bridge version auto-update (no user file changes) | Overwrite bridge `.cs` files with lower version string → trigger `Cmd+R` via osascript so Unity recompiles stale bridge → wait for bridge-ready with stale version → call `unity_list_tests` (no C# user files changed, so no auto-recompile) → `sendBridgeRequest` detects version mismatch, reinstalls correct `.cs` files, osascript refresh, bridge becomes ready with correct version |
+| 3 | Bridge version auto-update (no user file changes) | Overwrite bridge `.cs` files with lower version string → trigger `Cmd+R` via osascript so Unity recompiles stale bridge → wait for `bridge-ready.json` to appear with stale version → call `unity_list_tests` (no C# user files changed) → `sendBridgeRequest` internally calls `ensureBridgeInstalled()` which detects content mismatch and overwrites `.cs` files with correct templates → then checks `bridgeReadyMatchesProject()` which fails (old version in ready file) → triggers bootstrap (osascript refresh + wait for ready) → bridge recompiles and becomes ready with correct version → request proceeds |
 
 #### Phase 02 — Recompile (`02-recompile.test.ts`)
 
@@ -72,17 +75,22 @@ This makes phases fully independent — each starts from the clean Unity project
 |---|------|-------------|
 | 8 | List tests — empty | `unity_list_tests` → empty list (no test classes in clean project) |
 | 9 | Add passing test → list finds it | Write EditMode test class with `[Test]` method → `unity_recompile` → `unity_list_tests` → test appears by name |
-| 10 | Run tests → pass | `unity_run_tests` → passCount=1, failCount=0 |
-| 11 | Add failing test → run → failure reported | Add test with `Assert.Fail()` → `unity_recompile` → `unity_run_tests` → failCount > 0, failure message present |
-| 12 | Filter by category | Add `[Category("Slow")]` to a test → `unity_run_tests` with `categoryNames: ["Slow"]` → only that test runs |
-| 13 | Retrieve previous results | `unity_test_results` → returns results from last run, matches run ID |
-| 14 | Stale results detection | Write new C# file (change code) → `unity_test_results` → flags results as stale |
+| 10 | Run tests → pass | `unity_run_tests` → passCount=1, failCount=0 (note: `run_tests` calls `recompile()` internally, no explicit recompile needed) |
+| 11 | Run tests verbose mode | `unity_run_tests` with `verbose: true` → result includes full test details, not just summary |
+| 12 | Add failing test → run → failure reported | Add test with `Assert.Fail()` → `unity_run_tests` → failCount > 0, failure message present (internal recompile handles the new file) |
+| 13 | Filter by category | Add `[Category("Slow")]` to a test → `unity_run_tests` with `categoryNames: ["Slow"]` → only that test runs |
+| 14 | Retrieve previous results | `unity_test_results` → returns results from last run, matches run ID |
+| 15 | Filter results by status | `unity_test_results` with `statusFilter: "Failed"` → only failed tests returned |
+| 16 | Filter results by name | `unity_test_results` with `nameFilter` regex → only matching tests returned |
+| 17 | Stale results detection | Write new C# file (ensure file mtime is after the test-run marker) → `unity_test_results` → flags results as stale |
 
 #### Phase 04 — Lint (`04-lint.test.ts`)
 
+**Prerequisite**: `jb` CLI must be available (checked in global setup). If missing, this phase is skipped via `describe.skipIf`.
+
 | # | Test | Verification |
 |---|------|-------------|
-| 15 | Lint formats changed file | Write a well-formatted `.cs` file → `git add && git commit` → overwrite with badly formatted version → `unity_lint` → file gets cleaned up, `filesLinted > 0`, verify specific fixes applied |
+| 18 | Lint formats changed file | Write a well-formatted `.cs` file → `git add && git commit` → overwrite with badly formatted version → `unity_lint` → file gets cleaned up, `filesLinted > 0`, verify specific fixes applied |
 
 **Lint test fixture** — maximizes violations of active DotSettings WARNING rules:
 
@@ -137,8 +145,8 @@ public void AnotherMethod(){} public void ThirdMethod(){}
 
 | # | Test | Verification |
 |---|------|-------------|
-| 16 | Status reports full diagnostics | `unity_status` → editor running, bridge ready, Unity version, bridge version, last recompile time |
-| 17 | Invalid project path | Call `unity_recompile` with nonexistent path → returns meaningful error, no crash |
+| 19 | Status reports full diagnostics | `unity_status` → editor running, bridge ready, Unity version, bridge version, last recompile time |
+| 20 | Invalid project path | Call `unity_recompile` with nonexistent `projectPath` override → returns meaningful error, no crash |
 
 ### File Structure
 
@@ -160,7 +168,7 @@ __tests__/e2e/
 
 ### Helpers
 
-**`state.ts`** — Global setup writes `{ projectPath, unityVersion, unityPid }` to a JSON file in `os.tmpdir()`. Tests read it in `beforeAll`.
+**`state.ts`** — Global setup writes `{ projectPath, unityVersion, unityPid, jbAvailable }` to a JSON file in `os.tmpdir()`. Tests read it in `beforeAll`. The `jbAvailable` flag controls whether the lint phase runs or skips.
 
 **`mcp-client.ts`**:
 - `createMcpClient()` — spawns `node dist/server.mjs`, connects via `StdioClientTransport`, returns `{ client, callTool(name, args) }`
@@ -180,7 +188,10 @@ __tests__/e2e/
 - `compileErrorScript()` — C# with syntax error
 - `passingEditModeTest(className, category?)` — `[Test]` method that passes, optional `[Category]`
 - `failingEditModeTest(className)` — `[Test]` with `Assert.Fail()`
+- `editModeTestAsmdef()` — assembly definition JSON for EditMode tests (required for Unity test discovery; references `nunit.framework.dll` and `UnityEngine.TestRunner`)
 - `badlyFormattedScript()` — lint violation fixture (see Phase 04)
+
+**EditMode test setup**: Unity requires tests to be in a folder with an `.asmdef` file to discover them. The fixture `editModeTestAsmdef()` returns the JSON content for `Assets/Tests/Editor/Tests.asmdef` that references the required test assemblies. Phase 03 creates this folder structure in its `beforeAll` before writing test classes.
 
 ### Vitest Configuration
 
@@ -190,7 +201,7 @@ __tests__/e2e/
 - `hookTimeout: 600_000` (10 min for global setup)
 - `sequence.concurrent: false` — strictly sequential
 - `fileParallelism: false` — one phase at a time
-- `bail: 1` within each file — stop on first failure
+- `bail: 1` — suite-wide, any failure stops the entire run
 - Test files sorted alphabetically (numbered prefixes control order)
 - `include: ['__tests__/e2e/**/*.test.ts']`
 
