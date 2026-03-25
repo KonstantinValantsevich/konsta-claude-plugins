@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { execSync, execFileSync } from "node:child_process";
+import { execSync, execFileSync, spawn } from "node:child_process";
 
 const UNITY_HUB_EDITOR_DIR = "/Applications/Unity/Hub/Editor";
 const EDITOR_LOG_PATH = path.join(
@@ -32,11 +32,6 @@ export function findLatestUnityVersion(): string {
   return versions[versions.length - 1];
 }
 
-/** Full path to Unity.app for a version string. */
-export function unityAppPath(version: string): string {
-  return path.join(UNITY_HUB_EDITOR_DIR, version, "Unity.app");
-}
-
 /** Full path to Unity binary for a version string. */
 export function unityBinaryPath(version: string): string {
   return path.join(unityAppPath(version), "Contents/MacOS/Unity");
@@ -56,12 +51,15 @@ export function createUnityProject(
 }
 
 /**
- * Open Unity Editor in non-batch mode for a project.
+ * Open Unity Editor in non-batch mode by launching the binary directly.
+ * Spawns detached so it doesn't block, and the process is immediately visible in `ps aux`.
  */
-export function openUnityEditor(appPath: string, projectDir: string): void {
-  execSync(`open -a "${appPath}" --args -projectPath "${projectDir}"`, {
-    timeout: 10_000,
+export function openUnityEditor(binaryPath: string, projectDir: string): void {
+  const child = spawn(binaryPath, ["-projectPath", projectDir], {
+    detached: true,
+    stdio: "ignore",
   });
+  child.unref();
 }
 
 /**

@@ -41,7 +41,7 @@ describe("Phase 03 — Tests", () => {
   }, 600_000);
 
   afterAll(async () => {
-    await mcp.close();
+    if (mcp) await mcp.close();
   });
 
   it("test 8: list tests — empty", async () => {

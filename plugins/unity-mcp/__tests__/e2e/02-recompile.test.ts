@@ -30,7 +30,7 @@ describe("Phase 02 — Recompile", () => {
   }, 600_000);
 
   afterAll(async () => {
-    await mcp.close();
+    if (mcp) await mcp.close();
   });
 
   it("test 4: no changes → skip", async () => {

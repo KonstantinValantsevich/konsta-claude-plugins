@@ -9,15 +9,21 @@ import {
   badlyFormattedScript,
 } from "./helpers/fixtures.js";
 
-// Read state at module level — describe.skipIf evaluates at parse time
-const state = readState();
-const jbAvailable = state.jbAvailable;
+// Read state at module level — describe.skipIf evaluates at parse time.
+// Graceful fallback if state file doesn't exist yet (vitest collection phase).
+let jbAvailable = false;
+try {
+  jbAvailable = readState().jbAvailable;
+} catch {
+  // State not written yet — jbAvailable defaults to false (skip lint tests)
+}
 
 let mcp: McpTestClient;
 let projectPath: string;
 
 describe("Phase 04 — Lint", () => {
   beforeAll(async () => {
+    const state = readState();
     projectPath = state.projectPath;
 
     if (!jbAvailable) return;

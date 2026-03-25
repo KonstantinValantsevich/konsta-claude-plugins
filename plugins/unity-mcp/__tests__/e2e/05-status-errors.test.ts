@@ -24,7 +24,7 @@ describe("Phase 05 — Status & Errors", () => {
   }, 600_000);
 
   afterAll(async () => {
-    await mcp.close();
+    if (mcp) await mcp.close();
   });
 
   it("test 19: status reports full diagnostics", async () => {

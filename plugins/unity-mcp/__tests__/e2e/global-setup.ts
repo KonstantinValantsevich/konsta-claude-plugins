@@ -5,7 +5,6 @@ import { execSync } from "node:child_process";
 import {
   findLatestUnityVersion,
   unityBinaryPath,
-  unityAppPath,
   createUnityProject,
   openUnityEditor,
   waitForUnityProcess,
@@ -43,7 +42,7 @@ export default async function globalSetup(): Promise<void> {
   // 5. Open editor (non-batch)
   const startTime = new Date();
   console.log("[E2E] Opening Unity Editor...");
-  openUnityEditor(unityAppPath(version), projectDir);
+  openUnityEditor(unityBinaryPath(version), projectDir);
 
   // 6. Wait for Unity process
   const pid = await waitForUnityProcess(projectDir);

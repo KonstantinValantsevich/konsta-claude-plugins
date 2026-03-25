@@ -36,7 +36,7 @@ describe("Phase 01 — Bridge Lifecycle", () => {
   }, 600_000);
 
   afterAll(async () => {
-    await mcp.close();
+    if (mcp) await mcp.close();
   });
 
   it("test 1: first tool call installs bridge", async () => {
