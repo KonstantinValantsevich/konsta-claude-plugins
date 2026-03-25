@@ -44,7 +44,11 @@ export async function createMcpClient(
     args?: Record<string, unknown>,
   ): Promise<string> {
     const mergedArgs = { projectPath: defaultProjectPath, ...args };
-    const result = await client.callTool({ name, arguments: mergedArgs });
+    const result = await client.callTool(
+      { name, arguments: mergedArgs },
+      undefined,
+      { timeout: 300_000 },
+    );
 
     // Extract text from MCP content array
     const content = result.content as Array<{ type: string; text?: string }>;
