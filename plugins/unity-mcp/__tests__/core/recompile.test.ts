@@ -6,9 +6,13 @@ import { recompile } from "../../src/core/recompile.js";
 import { BRIDGE_CS_FILES, BRIDGE_EDITOR_DIR, MARKER_DIR } from "../../src/lib/config.js";
 import { getMarkerPath, ensureMarker, touchMarker } from "../../src/lib/project/changes.js";
 
-// Mock orchestrateRecompile so we don't need a real Unity instance
-vi.mock("../../src/lib/bridge/orchestrate.js", () => ({
-  orchestrateRecompile: vi.fn().mockResolvedValue({
+// Mock compile dependencies so we don't need a real Unity instance
+vi.mock("../../src/lib/compile/applescript.js", () => ({
+  unityIsRunning: vi.fn().mockReturnValue(false),
+}));
+
+vi.mock("../../src/lib/compile/cli-fallback.js", () => ({
+  runCliFallback: vi.fn().mockResolvedValue({
     success: true,
     didCompile: true,
     errors: [],
