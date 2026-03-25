@@ -133,6 +133,7 @@ describe("Phase 03 — Tests", () => {
   it("test 16: filter results by name", async () => {
     const text = await mcp.callTool("unity_test_results", {
       nameFilter: "Sample",
+      verbose: true,
     });
     expect(text).toContain("SampleTest");
     expect(text).not.toContain("FailTest");
