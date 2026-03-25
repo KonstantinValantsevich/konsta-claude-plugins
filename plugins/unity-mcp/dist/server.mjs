@@ -21534,15 +21534,16 @@ async function recompile(projectPath, logger = noopLogger) {
   fs7.mkdirSync(MARKER_DIR, { recursive: true });
   const markerPath = getMarkerPath(projectPath, "recompile");
   ensureMarker(markerPath);
-  if (!hasChangedCsFiles(projectPath, markerPath)) {
-    logger.log("No .cs files changed since last check");
-    return { success: true, skipped: true, errors: [] };
-  }
-  logger.log("C# files changed, triggering recompilation");
   const paths = bridgePaths(projectPath);
   ensureGitExclude(projectPath);
   fs7.mkdirSync(paths.ipcDir, { recursive: true });
   const { changed: bridgeChangedThisRun } = ensureBridgeInstalled(projectPath);
+  const csChanged = hasChangedCsFiles(projectPath, markerPath);
+  if (!csChanged && !bridgeChangedThisRun) {
+    logger.log("No .cs files changed since last check");
+    return { success: true, skipped: true, errors: [] };
+  }
+  logger.log(bridgeChangedThisRun ? "Bridge updated, triggering recompilation" : "C# files changed, triggering recompilation");
   const result = await orchestrateRecompile(projectPath, bridgeChangedThisRun);
   if (result.success || result.didCompile) {
     touchMarker(markerPath);

@@ -25,17 +25,18 @@ export async function recompile(
   const markerPath = getMarkerPath(projectPath, "recompile");
   ensureMarker(markerPath);
 
-  if (!hasChangedCsFiles(projectPath, markerPath)) {
-    logger.log("No .cs files changed since last check");
-    return { success: true, skipped: true, errors: [] };
-  }
-  logger.log("C# files changed, triggering recompilation");
-
-  // 2. Bridge installation
+  // 2. Bridge installation (always, regardless of C# changes)
   const paths = bridgePaths(projectPath);
   ensureGitExclude(projectPath);
   fs.mkdirSync(paths.ipcDir, { recursive: true });
   const { changed: bridgeChangedThisRun } = ensureBridgeInstalled(projectPath);
+
+  const csChanged = hasChangedCsFiles(projectPath, markerPath);
+  if (!csChanged && !bridgeChangedThisRun) {
+    logger.log("No .cs files changed since last check");
+    return { success: true, skipped: true, errors: [] };
+  }
+  logger.log(bridgeChangedThisRun ? "Bridge updated, triggering recompilation" : "C# files changed, triggering recompilation");
 
   // 3. Orchestrate recompilation
   const result = await orchestrateRecompile(projectPath, bridgeChangedThisRun);
