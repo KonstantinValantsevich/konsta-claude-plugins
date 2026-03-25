@@ -47,12 +47,15 @@ describe("Phase 02 — Recompile", () => {
     expect(text.toLowerCase()).toContain("success");
   });
 
-  it("test 6: compile error → reports errors", async () => {
+  it("test 6: compile error → reports errors with file/line details", async () => {
     const filePath = path.join(projectPath, "Assets", "BrokenScript.cs");
     fs.writeFileSync(filePath, compileErrorScript());
 
     const text = await mcp.callTool("unity_recompile");
     expect(text.toLowerCase()).toContain("fail");
+    // Bridge should propagate per-file error details, not just a generic summary
+    expect(text).toMatch(/BrokenScript\.cs/);
+    expect(text).toMatch(/\(\d+,\d+\)/);
   });
 
   it("test 7: fix error → success", async () => {

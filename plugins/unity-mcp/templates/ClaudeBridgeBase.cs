@@ -142,8 +142,12 @@ internal static class ClaudeBridgeBase
             testResults = testResultsJson,
         };
 
+        string json = JsonUtility.ToJson(payload, true);
+        if (errors != null && errors.Count > 0)
+            Debug.Log($"[ClaudeBridge] WriteStatus: errorCount={errors.Count} json.contains(\"file\")={json.Contains("file")} jsonLength={json.Length}\n[ClaudeBridge] JSON snippet (errors): {(json.Length > 500 ? json.Substring(0, 500) : json)}");
+
         string path = Path.Combine(IpcDir, "status-" + request.requestId + ".json");
-        TryWriteJsonAtomic(path, JsonUtility.ToJson(payload, true));
+        TryWriteJsonAtomic(path, json);
     }
 
     internal static void FinalizeRequest(RequestPayload request)

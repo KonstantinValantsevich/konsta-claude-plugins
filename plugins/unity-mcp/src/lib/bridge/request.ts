@@ -148,10 +148,8 @@ async function sendRawRequest(
       return { ok: false, error: "bridge_error", message: status.summary || "Bridge error." };
     }
 
-    if (status.state === "failed") {
-      return { ok: false, error: "compilation_failed", message: status.summary || "Compilation failed." };
-    }
-
+    // "failed" is a valid terminal state — return the full status so callers
+    // can extract structured errors via parseBridgeStatusToResult.
     return { ok: true, status };
   }
 }

@@ -74,9 +74,14 @@ internal static class ClaudeRecompileHandler
 
     private static void OnAssemblyCompilationFinished(string assemblyPath, CompilerMessage[] messages)
     {
+        string asm = System.IO.Path.GetFileNameWithoutExtension(assemblyPath ?? string.Empty);
+        int totalMessages = messages?.Length ?? 0;
+        Debug.Log($"[ClaudeBridge] assemblyCompilationFinished: assembly={asm} messages={totalMessages} activeNull={_active == null} finalized={_active?.Finalized}");
+
         if (_active == null || _active.Finalized) return;
         if (messages == null) return;
 
+        int errorsBefore = _active.Errors.Count;
         for (int i = 0; i < messages.Length; i++)
         {
             CompilerMessage msg = messages[i];
@@ -84,7 +89,7 @@ internal static class ClaudeRecompileHandler
 
             _active.Errors.Add(new ClaudeBridgeBase.ErrorPayload
             {
-                assembly = System.IO.Path.GetFileNameWithoutExtension(assemblyPath ?? string.Empty),
+                assembly = asm,
                 file = msg.file ?? string.Empty,
                 line = msg.line,
                 column = msg.column,
@@ -92,10 +97,13 @@ internal static class ClaudeRecompileHandler
                 type = "Error",
             });
         }
+        Debug.Log($"[ClaudeBridge] assemblyCompilationFinished: errorsAdded={_active.Errors.Count - errorsBefore} totalErrors={_active.Errors.Count}");
     }
 
     private static void OnCompilationFinished(object context)
     {
+        Debug.Log($"[ClaudeBridge] compilationFinished: activeNull={_active == null} finalized={_active?.Finalized} errorCount={_active?.Errors?.Count}");
+
         if (_active == null || _active.Finalized) return;
         if (!_active.CompilationStarted) _active.CompilationStarted = true;
 
@@ -109,6 +117,13 @@ internal static class ClaudeRecompileHandler
         _active.Finalized = true;
         string finalState = isSuccess ? "completed" : "failed";
         if (!didCompile && isSuccess) finalState = "completed";
+
+        Debug.Log($"[ClaudeBridge] Finalize: state={finalState} didCompile={didCompile} isSuccess={isSuccess} errorCount={_active.Errors.Count} summary={summary}");
+        for (int i = 0; i < _active.Errors.Count; i++)
+        {
+            var e = _active.Errors[i];
+            Debug.Log($"[ClaudeBridge] Error[{i}]: {e.file}({e.line},{e.column}): {e.message}");
+        }
 
         ClaudeBridgeBase.WriteStatus(_active.Request, finalState, didCompile, isSuccess, summary, _active.Errors);
         ClaudeBridgeBase.FinalizeRequest(_active.Request);
