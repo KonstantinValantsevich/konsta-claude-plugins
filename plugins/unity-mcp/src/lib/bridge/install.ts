@@ -6,7 +6,19 @@ import { bridgePaths, BRIDGE_CS_FILES, GIT_EXCLUDE_PATTERNS, LEGACY_BRIDGE_ASSET
 import { log } from "../logger.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const TEMPLATES_DIR = path.resolve(__dirname, "..", "..", "..", "templates");
+
+/** Walk up from __dirname to find the package root (where package.json lives).
+ *  Works from both source (src/lib/bridge/) and bundle (dist/). */
+function findPackageRoot(startDir: string): string {
+  let dir = startDir;
+  while (dir !== path.dirname(dir)) {
+    if (fs.existsSync(path.join(dir, "package.json"))) return dir;
+    dir = path.dirname(dir);
+  }
+  return startDir;
+}
+
+const TEMPLATES_DIR = path.join(findPackageRoot(__dirname), "templates");
 
 export function ensureBridgeInstalled(projectPath: string): {
   changed: boolean;

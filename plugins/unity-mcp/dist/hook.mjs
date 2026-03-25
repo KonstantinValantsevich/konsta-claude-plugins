@@ -129,7 +129,15 @@ function log(message) {
 
 // src/lib/bridge/install.ts
 var __dirname = path5.dirname(fileURLToPath(import.meta.url));
-var TEMPLATES_DIR = path5.resolve(__dirname, "..", "..", "..", "templates");
+function findPackageRoot(startDir) {
+  let dir = startDir;
+  while (dir !== path5.dirname(dir)) {
+    if (fs4.existsSync(path5.join(dir, "package.json"))) return dir;
+    dir = path5.dirname(dir);
+  }
+  return startDir;
+}
+var TEMPLATES_DIR = path5.join(findPackageRoot(__dirname), "templates");
 function ensureBridgeInstalled(projectPath) {
   const paths = bridgePaths(projectPath);
   const legacyDir = path5.join(projectPath, LEGACY_BRIDGE_ASSET_DIR);
