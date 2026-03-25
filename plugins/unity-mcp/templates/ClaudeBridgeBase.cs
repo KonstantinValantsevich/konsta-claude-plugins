@@ -269,8 +269,11 @@ internal static class ClaudeBridgeBase
                             RequestQueue.Add(request);
                             continue;
                         }
-                        WriteStatus(request, "bridge_error", false, false, "Domain reload interrupted processing");
-                        TryDeleteRequestFile(request.requestId);
+                        // Was mid-processing when domain reload hit — re-enqueue so handler
+                        // runs again (e.g., recompile finds nothing changed after reload).
+                        WriteStatus(request, "queued", false, false, "Request re-queued after domain reload");
+                        AcknowledgedRequestIds.Add(request.requestId);
+                        RequestQueue.Add(request);
                         continue;
                     }
                 }
