@@ -110,7 +110,10 @@ async function sendRawRequest(
   const status = await waitForBridgeStatus(statusPath, requestId, timeoutMs);
 
   // Clean up status file after reading (happy-path cleanup)
-  try { fs.unlinkSync(statusPath); } catch { /* already gone or never created */ }
+  try { fs.unlinkSync(statusPath); } catch (err: unknown) {
+    const e = err as NodeJS.ErrnoException;
+    if (e.code !== "ENOENT") log(`Warning: failed to clean status file: ${e.message}`);
+  }
 
   if (!status) {
     return { ok: false, error: "request_timeout", message: `Timed out waiting for bridge response (${action}).` };

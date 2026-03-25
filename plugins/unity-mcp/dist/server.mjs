@@ -21474,7 +21474,9 @@ async function sendRawRequest(projectPath, paths, action, opts) {
   const status = await waitForBridgeStatus(statusPath, requestId, timeoutMs);
   try {
     fs6.unlinkSync(statusPath);
-  } catch {
+  } catch (err) {
+    const e = err;
+    if (e.code !== "ENOENT") log(`Warning: failed to clean status file: ${e.message}`);
   }
   if (!status) {
     return { ok: false, error: "request_timeout", message: `Timed out waiting for bridge response (${action}).` };

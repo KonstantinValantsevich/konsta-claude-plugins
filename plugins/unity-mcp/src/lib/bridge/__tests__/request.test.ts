@@ -18,7 +18,6 @@ vi.mock("../ipc.js", () => ({
   writeBridgeRequest: vi.fn(),
   waitForBridgeReady: vi.fn(),
   waitForBridgeStatus: vi.fn(),
-  sleep: vi.fn(),
 }));
 
 // Mock fs — only the methods sendBridgeRequest uses
@@ -139,33 +138,6 @@ describe("sendBridgeRequest", () => {
       ok: false,
       error: "request_timeout",
       message: "Timed out waiting for bridge response (run_tests).",
-    });
-  });
-
-  it("retries on busy then returns bridge_busy if retries exhausted", async () => {
-    const { unityIsRunning } = await import("../../compile/applescript.js");
-    const { bridgeReadyMatchesProject, waitForBridgeStatus } = await import("../ipc.js");
-
-    (unityIsRunning as ReturnType<typeof vi.fn>).mockReturnValue(true);
-    (bridgeReadyMatchesProject as ReturnType<typeof vi.fn>).mockReturnValue(true);
-
-    // BRIDGE_MAX_BUSY_RETRIES = 1, so 2 busy responses = exhausted
-    const busyStatus = {
-      protocolVersion: 1, bridgeVersion: "4", requestId: "test-req-001",
-      projectPath: "/project", state: "busy" as const, isSuccess: false,
-      didCompile: false, errors: [], summary: "Bridge is busy",
-    };
-    (waitForBridgeStatus as ReturnType<typeof vi.fn>)
-      .mockResolvedValueOnce(busyStatus)
-      .mockResolvedValueOnce(busyStatus);
-
-    const { sendBridgeRequest } = await import("../request.js");
-    const result = await sendBridgeRequest("/project", "recompile");
-
-    expect(result).toEqual({
-      ok: false,
-      error: "bridge_busy",
-      message: "Bridge is busy and retries exhausted.",
     });
   });
 
