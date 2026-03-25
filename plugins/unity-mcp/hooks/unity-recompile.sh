@@ -1,6 +1,6 @@
 #!/bin/bash
-# Unity Recompile Hook — thin wrapper delegating to TypeScript
-# See src/hook/index.ts for the actual implementation.
+# Unity Recompile Hook — runs the bundled hook entry point.
+# See src/hook/index.ts for the source implementation.
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-exec npx --yes tsx "$SCRIPT_DIR/../src/hook/index.ts"
+exec node "$SCRIPT_DIR/../dist/hook.mjs"
