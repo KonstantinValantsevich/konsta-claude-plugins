@@ -31,16 +31,20 @@ export default async function globalSetup(): Promise<void> {
   createUnityProject(unityBinaryPath(version), projectDir);
   console.log("[E2E] Unity project created");
 
-  // 4. Open editor (non-batch)
+  // 4. Init git repo (before editor, so .git exists)
+  execSync("git init", { cwd: projectDir, stdio: "ignore" });
+
+  // 5. Open editor (non-batch)
   console.log("[E2E] Opening Unity Editor...");
   openUnityEditor(unityBinaryPath(version), projectDir);
 
-  // 5. Wait for Unity process to appear
+  // 6. Wait for Unity process to appear
   const pid = await waitForUnityProcess(projectDir);
   console.log(`[E2E] Unity process detected: PID ${pid}`);
 
-  // 6. Init git + tag baseline (after editor open so baseline includes Unity-generated files)
-  execSync("git init", { cwd: projectDir, stdio: "ignore" });
+  // 7. Let Unity settle (writes Library/, Logs/, etc.), then snapshot baseline
+  console.log("[E2E] Waiting for Unity to settle...");
+  await new Promise((r) => setTimeout(r, 15_000));
   execSync("git add -A", { cwd: projectDir, stdio: "ignore" });
   execSync('git commit -m "initial"', { cwd: projectDir, stdio: "ignore" });
   execSync("git tag e2e-baseline", { cwd: projectDir, stdio: "ignore" });
