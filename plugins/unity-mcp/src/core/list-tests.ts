@@ -1,17 +1,5 @@
-import fs from "node:fs";
-import {
-  bridgePaths,
-  BRIDGE_PROTOCOL_VERSION,
-  TEST_STATUS_TIMEOUT_MS,
-} from "../lib/config.js";
-import {
-  generateRequestId,
-  writeBridgeRequest,
-  waitForBridgeStatus,
-  bridgeReadyMatchesProject,
-} from "../lib/bridge/ipc.js";
-import { unityIsRunning } from "../lib/compile/applescript.js";
-import type { BridgeRequest, TestDiscoveryFilters } from "../lib/bridge/types.js";
+import { sendBridgeRequest } from "../lib/bridge/request.js";
+import type { TestDiscoveryFilters } from "../lib/bridge/types.js";
 import type { Logger, ListTestsResult } from "./types.js";
 
 const noopLogger: Logger = { log() {}, error() {} };
@@ -26,51 +14,20 @@ export interface ListTestsOptions {
 
 export async function listTests(opts: ListTestsOptions): Promise<ListTestsResult> {
   const logger = opts.logger ?? noopLogger;
-  const projectPath = opts.projectPath;
   const empty: ListTestsResult = { formatted: "", totalCount: 0, matchedCount: 0 };
-
-  if (!unityIsRunning(projectPath)) {
-    return { ...empty, formatted: "Unity editor must be running to list tests." };
-  }
-
-  const paths = bridgePaths(projectPath);
-  if (!bridgeReadyMatchesProject(paths.readyFile, projectPath)) {
-    return { ...empty, formatted: "Bridge is not ready. Run unity_recompile first to initialize the bridge." };
-  }
-
-  const requestId = generateRequestId();
-  const statusPath = paths.statusFile(requestId);
-
-  try { fs.unlinkSync(statusPath); } catch { /* doesn't exist */ }
 
   const payload: TestDiscoveryFilters = {};
   if (opts.categoryNames?.length) payload.categoryNames = opts.categoryNames;
   if (opts.groupNames?.length) payload.groupNames = opts.groupNames;
   if (opts.assemblyNames?.length) payload.assemblyNames = opts.assemblyNames;
 
-  const request: BridgeRequest = {
-    protocolVersion: BRIDGE_PROTOCOL_VERSION,
-    requestId,
-    requestedAtUnixMs: Date.now(),
-    projectPath,
-    action: "list_tests",
-    reason: "unity_list_tests MCP tool",
-    source: "unity-mcp",
-    payload,
-  };
-
-  fs.mkdirSync(paths.ipcDir, { recursive: true });
-  writeBridgeRequest(paths.requestFile, request);
-  logger.log("Sent list_tests request: " + requestId);
-
-  const status = await waitForBridgeStatus(statusPath, requestId, TEST_STATUS_TIMEOUT_MS);
-  if (!status) {
-    return { ...empty, formatted: "Timed out waiting for test list (300s)." };
+  const result = await sendBridgeRequest(opts.projectPath, "list_tests", { payload });
+  if (!result.ok) {
+    return { ...empty, formatted: result.message };
   }
 
-  if (status.state === "failed" || status.state === "bridge_error") {
-    return { ...empty, formatted: "List tests failed: " + (status.summary || "unknown error") };
-  }
+  const { status } = result;
+  logger.log("list_tests request completed");
 
   if (!status.testList) {
     return { ...empty, formatted: "Bridge returned no test list." };

@@ -38,7 +38,7 @@ describe("listTests", () => {
   it("returns error when Unity is not running", async () => {
     vi.mocked(unityIsRunning).mockReturnValue(false);
     const result = await listTests({ projectPath: projectDir });
-    expect(result.formatted).toContain("Unity editor must be running");
+    expect(result.formatted).toContain("Unity editor is not running");
     expect(result.totalCount).toBe(0);
     expect(result.matchedCount).toBe(0);
   });

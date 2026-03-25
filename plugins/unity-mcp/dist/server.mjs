@@ -22350,52 +22350,105 @@ async function runTests(opts) {
   return { runId, formatted: view.formatted };
 }
 
-// src/core/list-tests.ts
+// src/lib/bridge/request.ts
 import fs12 from "node:fs";
+function defaultTimeout(action) {
+  if (action === "run_tests" || action === "list_tests") return TEST_STATUS_TIMEOUT_MS;
+  return BRIDGE_STATUS_TIMEOUT_MS;
+}
+function reasonForAction(action) {
+  if (action === "bootstrap_handshake") return "bridge bootstrap handshake";
+  return `unity_${action} MCP tool`;
+}
+async function sendBridgeRequest(projectPath, action, opts) {
+  if (!unityIsRunning(projectPath)) {
+    return { ok: false, error: "unity_not_running", message: "Unity editor is not running." };
+  }
+  const paths = bridgePaths(projectPath);
+  ensureBridgeInstalled(projectPath);
+  ensureGitExclude(projectPath);
+  fs12.mkdirSync(paths.ipcDir, { recursive: true });
+  if (!bridgeReadyMatchesProject(paths.readyFile, projectPath)) {
+    log("Bridge not ready, starting bootstrap flow");
+    triggerEditorRefreshOnly(projectPath);
+    const ready = await waitForBridgeReady(paths.readyFile, projectPath, BRIDGE_READY_TIMEOUT_MS);
+    if (!ready) {
+      return { ok: false, error: "bridge_bootstrap_failed", message: "Bridge did not become ready after bootstrap refresh." };
+    }
+    const handshakeResult = await sendRawRequest(projectPath, paths, "bootstrap_handshake");
+    if (!handshakeResult.ok) return handshakeResult;
+    log("Bridge bootstrap handshake succeeded");
+  }
+  return sendRawRequest(projectPath, paths, action, opts);
+}
+async function sendRawRequest(projectPath, paths, action, opts) {
+  const timeoutMs = opts?.timeoutMs ?? defaultTimeout(action);
+  let attempt = 0;
+  while (true) {
+    const requestId = generateRequestId();
+    const statusPath = paths.statusFile(requestId);
+    try {
+      fs12.unlinkSync(statusPath);
+    } catch {
+    }
+    const request = {
+      protocolVersion: BRIDGE_PROTOCOL_VERSION,
+      requestId,
+      requestedAtUnixMs: Date.now(),
+      projectPath,
+      action,
+      reason: reasonForAction(action),
+      source: "unity-mcp",
+      payload: opts?.payload
+    };
+    writeBridgeRequest(paths.requestFile, request);
+    const status = await waitForBridgeStatus(statusPath, requestId, timeoutMs);
+    if (!status) {
+      return { ok: false, error: "request_timeout", message: `Timed out waiting for bridge response (${action}).` };
+    }
+    if (status.bridgeVersion !== BRIDGE_VERSION || status.protocolVersion !== BRIDGE_PROTOCOL_VERSION) {
+      return {
+        ok: false,
+        error: "version_mismatch",
+        message: `Bridge version mismatch (got version=${status.bridgeVersion} protocol=${status.protocolVersion}).`
+      };
+    }
+    if (status.state === "busy" && attempt < BRIDGE_MAX_BUSY_RETRIES) {
+      attempt++;
+      log(`Bridge busy, retrying action=${action} attempt=${attempt}`);
+      await sleep(BRIDGE_BUSY_RETRY_DELAY_MS);
+      continue;
+    }
+    if (status.state === "busy") {
+      return { ok: false, error: "bridge_busy", message: "Bridge is busy and retries exhausted." };
+    }
+    if (status.state === "bridge_error") {
+      return { ok: false, error: "bridge_error", message: status.summary || "Bridge error." };
+    }
+    if (status.state === "failed") {
+      return { ok: false, error: "compilation_failed", message: status.summary || "Compilation failed." };
+    }
+    return { ok: true, status };
+  }
+}
+
+// src/core/list-tests.ts
 var noopLogger5 = { log() {
 }, error() {
 } };
 async function listTests(opts) {
   const logger = opts.logger ?? noopLogger5;
-  const projectPath = opts.projectPath;
   const empty = { formatted: "", totalCount: 0, matchedCount: 0 };
-  if (!unityIsRunning(projectPath)) {
-    return { ...empty, formatted: "Unity editor must be running to list tests." };
-  }
-  const paths = bridgePaths(projectPath);
-  if (!bridgeReadyMatchesProject(paths.readyFile, projectPath)) {
-    return { ...empty, formatted: "Bridge is not ready. Run unity_recompile first to initialize the bridge." };
-  }
-  const requestId = generateRequestId();
-  const statusPath = paths.statusFile(requestId);
-  try {
-    fs12.unlinkSync(statusPath);
-  } catch {
-  }
   const payload = {};
   if (opts.categoryNames?.length) payload.categoryNames = opts.categoryNames;
   if (opts.groupNames?.length) payload.groupNames = opts.groupNames;
   if (opts.assemblyNames?.length) payload.assemblyNames = opts.assemblyNames;
-  const request = {
-    protocolVersion: BRIDGE_PROTOCOL_VERSION,
-    requestId,
-    requestedAtUnixMs: Date.now(),
-    projectPath,
-    action: "list_tests",
-    reason: "unity_list_tests MCP tool",
-    source: "unity-mcp",
-    payload
-  };
-  fs12.mkdirSync(paths.ipcDir, { recursive: true });
-  writeBridgeRequest(paths.requestFile, request);
-  logger.log("Sent list_tests request: " + requestId);
-  const status = await waitForBridgeStatus(statusPath, requestId, TEST_STATUS_TIMEOUT_MS);
-  if (!status) {
-    return { ...empty, formatted: "Timed out waiting for test list (300s)." };
+  const result = await sendBridgeRequest(opts.projectPath, "list_tests", { payload });
+  if (!result.ok) {
+    return { ...empty, formatted: result.message };
   }
-  if (status.state === "failed" || status.state === "bridge_error") {
-    return { ...empty, formatted: "List tests failed: " + (status.summary || "unknown error") };
-  }
+  const { status } = result;
+  logger.log("list_tests request completed");
   if (!status.testList) {
     return { ...empty, formatted: "Bridge returned no test list." };
   }
