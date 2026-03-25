@@ -263,6 +263,8 @@ internal static class ClaudeBridgeBase
                         }
                         if (statusObj.state == "queued")
                         {
+                            // Re-enqueue after domain reload — refresh timestamp so TS resets its deadline
+                            WriteStatus(request, "queued", false, false, "Request re-queued after domain reload");
                             AcknowledgedRequestIds.Add(request.requestId);
                             RequestQueue.Add(request);
                             continue;
@@ -346,11 +348,13 @@ internal static class ClaudeBridgeBase
         }
     }
 
+    // Called only from main thread (MarkFree → FinalizeRequest path)
     private static void UpdateLoopKickTimerState()
     {
+        int queueCount = RequestQueue.Count; // safe: only mutated on main thread
         lock (Sync)
         {
-            bool needsKicks = _requestCheckQueued || _busyRequestId != null || RequestQueue.Count > 0;
+            bool needsKicks = _requestCheckQueued || _busyRequestId != null || queueCount > 0;
             if (!needsKicks && _loopKickTimer != null)
             {
                 try { _loopKickTimer.Dispose(); } catch (Exception) { }
@@ -376,7 +380,6 @@ internal static class ClaudeBridgeBase
             string[] files = Directory.GetFiles(IpcDir, "request-*.json");
             foreach (string filePath in files)
             {
-                if (filePath.EndsWith(".tmp")) continue;
                 try
                 {
                     string json = File.ReadAllText(filePath);
@@ -445,7 +448,6 @@ internal static class ClaudeBridgeBase
             string[] statusFiles = Directory.GetFiles(IpcDir, "status-*.json");
             foreach (string filePath in statusFiles)
             {
-                if (filePath.EndsWith(".tmp")) continue;
                 try
                 {
                     string json = File.ReadAllText(filePath);
@@ -461,12 +463,14 @@ internal static class ClaudeBridgeBase
             string[] requestFiles = Directory.GetFiles(IpcDir, "request-*.json");
             foreach (string filePath in requestFiles)
             {
-                if (filePath.EndsWith(".tmp")) continue;
                 try
                 {
                     string json = File.ReadAllText(filePath);
                     var request = JsonUtility.FromJson<RequestPayload>(json);
                     if (request == null) continue;
+                    // Skip active or queued requests — they may legitimately be >5min old
+                    if (request.requestId == _busyRequestId) continue;
+                    if (AcknowledgedRequestIds.Contains(request.requestId)) continue;
                     if (request.requestedAtUnixMs > 0 && (nowMs - request.requestedAtUnixMs) > StaleThresholdMs)
                         File.Delete(filePath);
                 }
