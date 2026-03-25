@@ -8,7 +8,6 @@ import {
   createUnityProject,
   openUnityEditor,
   waitForUnityProcess,
-  waitForEditorLogRefresh,
   isJbAvailable,
 } from "./helpers/unity.js";
 import { writeState } from "./helpers/state.js";
@@ -40,18 +39,12 @@ export default async function globalSetup(): Promise<void> {
   console.log("[E2E] Git initialized with e2e-baseline tag");
 
   // 5. Open editor (non-batch)
-  const startTime = new Date();
   console.log("[E2E] Opening Unity Editor...");
   openUnityEditor(unityBinaryPath(version), projectDir);
 
-  // 6. Wait for Unity process
+  // 6. Wait for Unity process to appear
   const pid = await waitForUnityProcess(projectDir);
   console.log(`[E2E] Unity process detected: PID ${pid}`);
-
-  // 7. Wait for editor to finish loading
-  console.log("[E2E] Waiting for editor 'Refresh completed'...");
-  await waitForEditorLogRefresh(300_000, startTime);
-  console.log("[E2E] Editor ready");
 
   // 8. Write shared state
   writeState({
