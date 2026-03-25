@@ -12,9 +12,35 @@ import {
 } from "./helpers/unity.js";
 import { writeState, readState, cleanupState } from "./helpers/state.js";
 
-/** E2E project lives in the plugin root, persists across runs. */
+/** E2E project lives in the plugin root. */
 const PLUGIN_ROOT = path.resolve(import.meta.dirname, "..", "..");
 const PROJECT_DIR = path.join(PLUGIN_ROOT, ".e2e-project");
+
+/** Synchronous cleanup — safe to call from signal handlers and process.on('exit'). */
+function emergencyCleanup(): void {
+  try {
+    const state = readState();
+    if (state.unityPid) {
+      try { process.kill(state.unityPid, "SIGKILL"); } catch { /* already dead */ }
+    }
+    if (state.projectPath) {
+      fs.rmSync(state.projectPath, { recursive: true, force: true });
+    }
+    cleanupState();
+  } catch {
+    // No state file — nothing to clean
+  }
+}
+
+// Ensure cleanup on crashes, Ctrl+C, and unhandled errors
+process.on("exit", emergencyCleanup);
+process.on("SIGINT", () => { emergencyCleanup(); process.exit(1); });
+process.on("SIGTERM", () => { emergencyCleanup(); process.exit(1); });
+process.on("uncaughtException", (err) => {
+  console.error("[E2E] Uncaught exception, cleaning up...", err);
+  emergencyCleanup();
+  process.exit(1);
+});
 
 export default async function globalSetup(): Promise<() => Promise<void>> {
   console.log("[E2E] Starting global setup...");
