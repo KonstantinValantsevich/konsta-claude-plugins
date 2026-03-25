@@ -30,6 +30,7 @@ export async function createMcpClient(
   const transport = new StdioClientTransport({
     command: "node",
     args: [SERVER_PATH],
+    stderr: "pipe",
   });
 
   const client = new Client(
@@ -39,11 +40,20 @@ export async function createMcpClient(
 
   await client.connect(transport);
 
+  // Forward MCP server stderr to console for debugging
+  const serverProcess = (transport as unknown as { _process?: { stderr?: NodeJS.ReadableStream } })._process;
+  if (serverProcess?.stderr) {
+    serverProcess.stderr.on("data", (chunk: Buffer) => {
+      process.stderr.write(chunk);
+    });
+  }
+
   async function callTool(
     name: string,
     args?: Record<string, unknown>,
   ): Promise<string> {
     const mergedArgs = { projectPath: defaultProjectPath, ...args };
+    console.log(`[E2E] callTool: ${name}`);
     const result = await client.callTool(
       { name, arguments: mergedArgs },
       undefined,
@@ -56,6 +66,7 @@ export async function createMcpClient(
       .filter((c) => c.type === "text")
       .map((c) => c.text)
       .join("\n");
+    console.log(`[E2E] ${name} → ${text.slice(0, 200)}`);
     return text;
   }
 
