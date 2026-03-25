@@ -10,9 +10,10 @@ import {
   waitForUnityProcess,
   isJbAvailable,
 } from "./helpers/unity.js";
-import { writeState } from "./helpers/state.js";
+import { writeState, readState, cleanupState } from "./helpers/state.js";
+import { closeUnity } from "./helpers/unity.js";
 
-export default async function globalSetup(): Promise<void> {
+export default async function globalSetup(): Promise<() => Promise<void>> {
   console.log("[E2E] Starting global setup...");
 
   // 1. Find Unity
@@ -59,4 +60,26 @@ export default async function globalSetup(): Promise<void> {
   });
 
   console.log("[E2E] Global setup complete");
+
+  // Return teardown function
+  return async () => {
+    console.log("[E2E] Starting global teardown...");
+    try {
+      const state = readState();
+      if (state.unityPid) {
+        console.log(`[E2E] Closing Unity (PID ${state.unityPid})...`);
+        closeUnity(state.unityPid);
+        console.log("[E2E] Unity closed");
+      }
+      if (state.projectPath) {
+        console.log(`[E2E] Deleting project: ${state.projectPath}`);
+        fs.rmSync(state.projectPath, { recursive: true, force: true });
+        console.log("[E2E] Project deleted");
+      }
+      cleanupState();
+    } catch {
+      console.log("[E2E] No state file found, nothing to tear down");
+    }
+    console.log("[E2E] Global teardown complete");
+  };
 }
