@@ -64,7 +64,19 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   createUnityProject(unityBinaryPath(version), PROJECT_DIR);
   console.log("[E2E] Unity project created");
 
-  // 5. Init git + tag baseline
+  // 5. Add Unity .gitignore so Library/, Temp/, Logs/ are never tracked
+  fs.writeFileSync(path.join(PROJECT_DIR, ".gitignore"), [
+    "/[Ll]ibrary/",
+    "/[Tt]emp/",
+    "/[Oo]bj/",
+    "/[Bb]uild/",
+    "/[Bb]uilds/",
+    "/[Ll]ogs/",
+    "/[Mm]emoryCaptures/",
+    "/[Uu]serSettings/",
+  ].join("\n") + "\n");
+
+  // 6. Init git + tag baseline
   execSync("git init", { cwd: PROJECT_DIR, stdio: "ignore" });
   execSync("git add -A", { cwd: PROJECT_DIR, stdio: "ignore" });
   execSync('git commit -m "initial"', { cwd: PROJECT_DIR, stdio: "ignore" });

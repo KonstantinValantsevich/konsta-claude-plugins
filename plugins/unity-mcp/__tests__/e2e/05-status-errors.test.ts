@@ -12,7 +12,7 @@ describe("Phase 05 — Status & Errors", () => {
     projectPath = state.projectPath;
 
     // Cross-phase isolation
-    execSync("git reset --hard e2e-baseline && git clean -fdx", {
+    execSync("git reset --hard e2e-baseline && git clean -fd", {
       cwd: projectPath,
       stdio: "ignore",
     });

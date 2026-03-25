@@ -23,7 +23,7 @@ describe("Phase 01 — Bridge Lifecycle", () => {
     unityPid = state.unityPid;
 
     // Cross-phase isolation: reset to baseline
-    execSync("git reset --hard e2e-baseline && git clean -fdx", {
+    execSync("git reset --hard e2e-baseline && git clean -fd -- Assets/", {
       cwd: projectPath,
       stdio: "ignore",
     });

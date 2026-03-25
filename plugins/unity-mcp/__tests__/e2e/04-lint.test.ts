@@ -29,7 +29,7 @@ describe("Phase 04 — Lint", () => {
     if (!jbAvailable) return;
 
     // Cross-phase isolation
-    execSync("git reset --hard e2e-baseline && git clean -fdx", {
+    execSync("git reset --hard e2e-baseline && git clean -fd", {
       cwd: projectPath,
       stdio: "ignore",
     });
