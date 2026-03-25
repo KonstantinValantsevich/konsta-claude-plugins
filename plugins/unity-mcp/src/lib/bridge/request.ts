@@ -1,8 +1,6 @@
 import fs from "node:fs";
 import {
   bridgePaths,
-  BRIDGE_BUSY_RETRY_DELAY_MS,
-  BRIDGE_MAX_BUSY_RETRIES,
   BRIDGE_PROTOCOL_VERSION,
   BRIDGE_READY_TIMEOUT_MS,
   BRIDGE_STATUS_TIMEOUT_MS,
@@ -20,7 +18,6 @@ import type { TestDiscoveryFilters } from "./types.js";
 import {
   bridgeReadyMatchesProject,
   generateRequestId,
-  sleep,
   waitForBridgeReady,
   waitForBridgeStatus,
   writeBridgeRequest,
@@ -83,7 +80,7 @@ export async function sendBridgeRequest(
 }
 
 /**
- * Low-level: send a single bridge request and poll for status. Handles busy retries.
+ * Low-level: send a single bridge request and poll for status.
  * Used for both bootstrap_handshake (internal) and user-facing actions.
  */
 async function sendRawRequest(
@@ -93,63 +90,49 @@ async function sendRawRequest(
   opts?: { payload?: TestDiscoveryFilters; timeoutMs?: number },
 ): Promise<BridgeResult> {
   const timeoutMs = opts?.timeoutMs ?? defaultTimeout(action);
-  let attempt = 0;
+  const requestId = generateRequestId();
+  const statusPath = paths.statusFile(requestId);
+  const requestPath = paths.requestFile(requestId);
 
-  while (true) {
-    const requestId = generateRequestId();
-    const statusPath = paths.statusFile(requestId);
+  const request: BridgeRequest = {
+    protocolVersion: BRIDGE_PROTOCOL_VERSION,
+    requestId,
+    requestedAtUnixMs: Date.now(),
+    projectPath,
+    action,
+    reason: reasonForAction(action),
+    source: "unity-mcp",
+    payload: opts?.payload,
+  };
 
-    try { fs.unlinkSync(statusPath); } catch { /* doesn't exist */ }
+  writeBridgeRequest(requestPath, request);
 
-    const request: BridgeRequest = {
-      protocolVersion: BRIDGE_PROTOCOL_VERSION,
-      requestId,
-      requestedAtUnixMs: Date.now(),
-      projectPath,
-      action,
-      reason: reasonForAction(action),
-      source: "unity-mcp",
-      payload: opts?.payload,
-    };
+  const status = await waitForBridgeStatus(statusPath, requestId, timeoutMs);
 
-    writeBridgeRequest(paths.requestFile, request);
+  // Clean up status file after reading (happy-path cleanup)
+  try { fs.unlinkSync(statusPath); } catch { /* already gone or never created */ }
 
-    const status = await waitForBridgeStatus(statusPath, requestId, timeoutMs);
-
-    if (!status) {
-      return { ok: false, error: "request_timeout", message: `Timed out waiting for bridge response (${action}).` };
-    }
-
-    // Version mismatch — detect explicitly instead of masking as timeout
-    if (
-      status.bridgeVersion !== BRIDGE_VERSION ||
-      status.protocolVersion !== BRIDGE_PROTOCOL_VERSION
-    ) {
-      return {
-        ok: false,
-        error: "version_mismatch",
-        message: `Bridge version mismatch (got version=${status.bridgeVersion} protocol=${status.protocolVersion}).`,
-      };
-    }
-
-    // Busy retry
-    if (status.state === "busy" && attempt < BRIDGE_MAX_BUSY_RETRIES) {
-      attempt++;
-      log(`Bridge busy, retrying action=${action} attempt=${attempt}`);
-      await sleep(BRIDGE_BUSY_RETRY_DELAY_MS);
-      continue;
-    }
-
-    if (status.state === "busy") {
-      return { ok: false, error: "bridge_busy", message: "Bridge is busy and retries exhausted." };
-    }
-
-    if (status.state === "bridge_error") {
-      return { ok: false, error: "bridge_error", message: status.summary || "Bridge error." };
-    }
-
-    // "failed" is a valid terminal state — return the full status so callers
-    // can extract structured errors via parseBridgeStatusToResult.
-    return { ok: true, status };
+  if (!status) {
+    return { ok: false, error: "request_timeout", message: `Timed out waiting for bridge response (${action}).` };
   }
+
+  // Version mismatch — detect explicitly instead of masking as timeout
+  if (
+    status.bridgeVersion !== BRIDGE_VERSION ||
+    status.protocolVersion !== BRIDGE_PROTOCOL_VERSION
+  ) {
+    return {
+      ok: false,
+      error: "version_mismatch",
+      message: `Bridge version mismatch (got version=${status.bridgeVersion} protocol=${status.protocolVersion}).`,
+    };
+  }
+
+  if (status.state === "bridge_error") {
+    return { ok: false, error: "bridge_error", message: status.summary || "Bridge error." };
+  }
+
+  // "failed" is a valid terminal state — return the full status so callers
+  // can extract structured errors via parseBridgeStatusToResult.
+  return { ok: true, status };
 }

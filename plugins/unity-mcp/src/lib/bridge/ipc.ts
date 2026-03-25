@@ -161,7 +161,7 @@ export async function waitForBridgeStatus(
   requestId: string,
   timeoutMs: number,
 ): Promise<BridgeStatus | null> {
-  const deadline = Date.now() + timeoutMs;
+  let deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const status = readBridgeStatus(statusPath);
     if (status && status.requestId === requestId) {
@@ -169,6 +169,7 @@ export async function waitForBridgeStatus(
         status.bridgeVersion !== BRIDGE_VERSION ||
         status.protocolVersion !== BRIDGE_PROTOCOL_VERSION
       ) {
+        // Version mismatch — don't reset deadline (bridge may be upgrading)
         await sleep(POLL_INTERVAL_MS);
         continue;
       }
@@ -178,6 +179,8 @@ export async function waitForBridgeStatus(
         );
         return status;
       }
+      // Non-terminal status seen — reset deadline (request is alive/queued)
+      deadline = Date.now() + timeoutMs;
     }
     await sleep(POLL_INTERVAL_MS);
   }

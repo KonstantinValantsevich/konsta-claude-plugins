@@ -10,8 +10,6 @@ export const POLL_INTERVAL_MS = 500;
 export const BRIDGE_READY_TIMEOUT_MS = 120_000;
 export const BRIDGE_STATUS_TIMEOUT_MS = 120_000;
 export const TEST_STATUS_TIMEOUT_MS = 300_000;
-export const BRIDGE_BUSY_RETRY_DELAY_MS = 1_000;
-export const BRIDGE_MAX_BUSY_RETRIES = 1;
 
 // Paths
 export const CACHE_DIR = path.join(os.homedir(), ".claude", "cache", "unity-recompile");
@@ -27,7 +25,6 @@ export const BRIDGE_CS_FILES = [
   "ClaudeTestHandler.cs",
 ];
 export const BRIDGE_IPC_DIRNAME = "Library/ClaudeHookIPC";
-export const BRIDGE_REQUEST_FILENAME = "request.json";
 export const BRIDGE_READY_FILENAME = "bridge-ready.json";
 
 // Legacy bridge paths (for migration)
@@ -49,7 +46,8 @@ export function bridgePaths(projectPath: string) {
       path.join(projectPath, BRIDGE_EDITOR_DIR, f),
     ),
     ipcDir,
-    requestFile: path.join(ipcDir, BRIDGE_REQUEST_FILENAME),
+    requestFile: (requestId: string) =>
+      path.join(ipcDir, `request-${requestId}.json`),
     readyFile: path.join(ipcDir, BRIDGE_READY_FILENAME),
     statusFile: (requestId: string) =>
       path.join(ipcDir, `status-${requestId}.json`),

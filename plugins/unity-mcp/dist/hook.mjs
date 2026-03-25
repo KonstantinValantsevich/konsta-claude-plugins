@@ -34,8 +34,6 @@ var POLL_INTERVAL_MS = 500;
 var BRIDGE_READY_TIMEOUT_MS = 12e4;
 var BRIDGE_STATUS_TIMEOUT_MS = 12e4;
 var TEST_STATUS_TIMEOUT_MS = 3e5;
-var BRIDGE_BUSY_RETRY_DELAY_MS = 1e3;
-var BRIDGE_MAX_BUSY_RETRIES = 1;
 var CACHE_DIR = path2.join(os.homedir(), ".claude", "cache", "unity-recompile");
 var MARKER_DIR = path2.join(CACHE_DIR, "markers");
 var TEST_STORE_DIR = path2.join(CACHE_DIR, "test-runs");
@@ -47,7 +45,6 @@ var BRIDGE_CS_FILES = [
   "ClaudeTestHandler.cs"
 ];
 var BRIDGE_IPC_DIRNAME = "Library/ClaudeHookIPC";
-var BRIDGE_REQUEST_FILENAME = "request.json";
 var BRIDGE_READY_FILENAME = "bridge-ready.json";
 var LEGACY_BRIDGE_ASSET_DIR = "Assets/Recompile Hook";
 var GIT_EXCLUDE_PATTERNS = [
@@ -63,7 +60,7 @@ function bridgePaths(projectPath) {
       (f) => path2.join(projectPath, BRIDGE_EDITOR_DIR, f)
     ),
     ipcDir,
-    requestFile: path2.join(ipcDir, BRIDGE_REQUEST_FILENAME),
+    requestFile: (requestId) => path2.join(ipcDir, `request-${requestId}.json`),
     readyFile: path2.join(ipcDir, BRIDGE_READY_FILENAME),
     statusFile: (requestId) => path2.join(ipcDir, `status-${requestId}.json`)
   };
@@ -444,7 +441,7 @@ async function waitForBridgeReady(readyPath, projectPath, timeoutMs) {
   return false;
 }
 async function waitForBridgeStatus(statusPath, requestId, timeoutMs) {
-  const deadline = Date.now() + timeoutMs;
+  let deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const status = readBridgeStatus(statusPath);
     if (status && status.requestId === requestId) {
@@ -458,6 +455,7 @@ async function waitForBridgeStatus(statusPath, requestId, timeoutMs) {
         );
         return status;
       }
+      deadline = Date.now() + timeoutMs;
     }
     await sleep(POLL_INTERVAL_MS);
   }
@@ -497,50 +495,39 @@ async function sendBridgeRequest(projectPath, action, opts) {
 }
 async function sendRawRequest(projectPath, paths, action, opts) {
   const timeoutMs = opts?.timeoutMs ?? defaultTimeout(action);
-  let attempt = 0;
-  while (true) {
-    const requestId = generateRequestId();
-    const statusPath = paths.statusFile(requestId);
-    try {
-      fs7.unlinkSync(statusPath);
-    } catch {
-    }
-    const request = {
-      protocolVersion: BRIDGE_PROTOCOL_VERSION,
-      requestId,
-      requestedAtUnixMs: Date.now(),
-      projectPath,
-      action,
-      reason: reasonForAction(action),
-      source: "unity-mcp",
-      payload: opts?.payload
-    };
-    writeBridgeRequest(paths.requestFile, request);
-    const status = await waitForBridgeStatus(statusPath, requestId, timeoutMs);
-    if (!status) {
-      return { ok: false, error: "request_timeout", message: `Timed out waiting for bridge response (${action}).` };
-    }
-    if (status.bridgeVersion !== BRIDGE_VERSION || status.protocolVersion !== BRIDGE_PROTOCOL_VERSION) {
-      return {
-        ok: false,
-        error: "version_mismatch",
-        message: `Bridge version mismatch (got version=${status.bridgeVersion} protocol=${status.protocolVersion}).`
-      };
-    }
-    if (status.state === "busy" && attempt < BRIDGE_MAX_BUSY_RETRIES) {
-      attempt++;
-      log(`Bridge busy, retrying action=${action} attempt=${attempt}`);
-      await sleep(BRIDGE_BUSY_RETRY_DELAY_MS);
-      continue;
-    }
-    if (status.state === "busy") {
-      return { ok: false, error: "bridge_busy", message: "Bridge is busy and retries exhausted." };
-    }
-    if (status.state === "bridge_error") {
-      return { ok: false, error: "bridge_error", message: status.summary || "Bridge error." };
-    }
-    return { ok: true, status };
+  const requestId = generateRequestId();
+  const statusPath = paths.statusFile(requestId);
+  const requestPath = paths.requestFile(requestId);
+  const request = {
+    protocolVersion: BRIDGE_PROTOCOL_VERSION,
+    requestId,
+    requestedAtUnixMs: Date.now(),
+    projectPath,
+    action,
+    reason: reasonForAction(action),
+    source: "unity-mcp",
+    payload: opts?.payload
+  };
+  writeBridgeRequest(requestPath, request);
+  const status = await waitForBridgeStatus(statusPath, requestId, timeoutMs);
+  try {
+    fs7.unlinkSync(statusPath);
+  } catch {
   }
+  if (!status) {
+    return { ok: false, error: "request_timeout", message: `Timed out waiting for bridge response (${action}).` };
+  }
+  if (status.bridgeVersion !== BRIDGE_VERSION || status.protocolVersion !== BRIDGE_PROTOCOL_VERSION) {
+    return {
+      ok: false,
+      error: "version_mismatch",
+      message: `Bridge version mismatch (got version=${status.bridgeVersion} protocol=${status.protocolVersion}).`
+    };
+  }
+  if (status.state === "bridge_error") {
+    return { ok: false, error: "bridge_error", message: status.summary || "Bridge error." };
+  }
+  return { ok: true, status };
 }
 
 // src/core/recompile.ts
