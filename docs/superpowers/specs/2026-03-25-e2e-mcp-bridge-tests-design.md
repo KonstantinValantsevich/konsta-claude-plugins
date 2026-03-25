@@ -36,14 +36,11 @@ Tests call tools through the real MCP protocol:
 
 ### Cross-Phase Isolation
 
-Each test file's `beforeAll` resets to baseline:
-```
-git reset --hard e2e-baseline && git clean -fdx
-```
+Each test file's `beforeAll`:
+1. Reset to baseline: `git reset --hard e2e-baseline && git clean -fdx` — uses `-fdx` (not `-fd`) to also remove git-excluded files like `Assets/Claude Bridge/` (which is added to `.git/info/exclude` by `ensureGitExclude`)
+2. Call `unity_recompile` as a **bootstrap step** — this reinstalls the bridge (since `git clean -fdx` removed it), triggers compilation, and leaves the project in a known-good state with bridge ready
 
-Uses `-fdx` (not `-fd`) to also remove git-excluded files like `Assets/Claude Bridge/` (which is added to `.git/info/exclude` by `ensureGitExclude`). This ensures each phase starts from a truly clean state.
-
-Each phase writes its own C# files and recompiles as needed.
+This bootstrap recompile is necessary because each phase starts from a truly clean state. Tests within the phase then operate on an already-bootstrapped project.
 
 ### Failure Strategy
 
@@ -64,7 +61,7 @@ Each phase writes its own C# files and recompiles as needed.
 
 | # | Test | Verification |
 |---|------|-------------|
-| 4 | No changes → skip | `unity_recompile` with no new C# files → result indicates skipped |
+| 4 | No changes → skip | `unity_recompile` (second call — bootstrap already ran in `beforeAll`) with no new C# files → result indicates skipped |
 | 5 | Valid C# file → success | Write `SimpleComponent.cs` (valid MonoBehaviour) to `Assets/` → `unity_recompile` → succeeds, no errors |
 | 6 | Compile error → reports errors | Write `BrokenScript.cs` with syntax error → `unity_recompile` → returns compilation errors with file/line info |
 | 7 | Fix error → success | Fix `BrokenScript.cs` → `unity_recompile` → succeeds |
@@ -73,7 +70,7 @@ Each phase writes its own C# files and recompiles as needed.
 
 | # | Test | Verification |
 |---|------|-------------|
-| 8 | List tests — empty | `unity_list_tests` → empty list (no test classes in clean project) |
+| 8 | List tests — empty | `unity_list_tests` → empty list (bootstrap recompile already ran in `beforeAll`, no test classes exist) |
 | 9 | Add passing test → list finds it | Write EditMode test class with `[Test]` method → `unity_recompile` → `unity_list_tests` → test appears by name |
 | 10 | Run tests → pass | `unity_run_tests` → passCount=1, failCount=0 (note: `run_tests` calls `recompile()` internally, no explicit recompile needed) |
 | 11 | Run tests verbose mode | `unity_run_tests` with `verbose: true` → result includes full test details, not just summary |
@@ -82,7 +79,7 @@ Each phase writes its own C# files and recompiles as needed.
 | 14 | Retrieve previous results | `unity_test_results` → returns results from last run, matches run ID |
 | 15 | Filter results by status | `unity_test_results` with `statusFilter: "Failed"` → only failed tests returned |
 | 16 | Filter results by name | `unity_test_results` with `nameFilter` regex → only matching tests returned |
-| 17 | Stale results detection | Write new C# file (ensure file mtime is after the test-run marker) → `unity_test_results` → flags results as stale |
+| 17 | Stale results detection | Wait 1.1s (filesystem mtime resolution guard) → write new C# file → `unity_test_results` → flags results as stale (staleness is detected via `hasChangedCsFiles` comparing `.cs` file mtime against the marker file mtime set by `touchMarker` after the last test run) |
 
 #### Phase 04 — Lint (`04-lint.test.ts`)
 
@@ -90,7 +87,7 @@ Each phase writes its own C# files and recompiles as needed.
 
 | # | Test | Verification |
 |---|------|-------------|
-| 18 | Lint formats changed file | Write a well-formatted `.cs` file → `git add && git commit` → overwrite with badly formatted version → `unity_lint` → file gets cleaned up, `filesLinted > 0`, verify specific fixes applied |
+| 18 | Lint formats changed file | Write a well-formatted `.cs` file → `git add && git commit` → overwrite with badly formatted version → `unity_lint` → file gets cleaned up, `filesLinted > 0`. Verify concrete fixes: (1) braces added to `if`/`for`/`foreach`/`while` statements, (2) modifier order corrected to `public static` (was `static public`), (3) no multiple statements on one line |
 
 **Lint test fixture** — maximizes violations of active DotSettings WARNING rules:
 
@@ -180,6 +177,7 @@ __tests__/e2e/
 - `createUnityProject(unityBinaryPath, projectDir)` — run `-createProject -quit -batchmode`, wait for exit
 - `openUnityEditor(unityAppPath, projectDir)` — `open -a` in non-batch mode
 - `waitForUnityProcess(projectDir, timeoutMs)` — poll `ps aux` for Unity matching project path
+- `waitForEditorLogRefresh(projectDir, timeoutMs)` — poll Unity Editor.log (`~/Library/Logs/Unity/Editor.log`) for "Refresh completed" after process detection to ensure project is fully loaded
 - `triggerOsascriptRefresh()` — send `Cmd+R` via osascript (same pattern as `applescript.ts`)
 - `closeUnity(pid)` — kill process
 
