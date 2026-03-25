@@ -21509,9 +21509,6 @@ async function sendRawRequest(projectPath, paths, action, opts) {
     if (status.state === "bridge_error") {
       return { ok: false, error: "bridge_error", message: status.summary || "Bridge error." };
     }
-    if (status.state === "failed") {
-      return { ok: false, error: "compilation_failed", message: status.summary || "Compilation failed." };
-    }
     return { ok: true, status };
   }
 }
@@ -22001,13 +21998,8 @@ import { fileURLToPath as fileURLToPath2 } from "node:url";
 var execFileAsync = promisify(execFile);
 var execAsync = promisify(exec);
 var __dirname2 = path7.dirname(fileURLToPath2(import.meta.url));
-var SETTINGS_PATH = path7.resolve(
-  __dirname2,
-  "..",
-  "..",
-  "hooks",
-  "TripleDot.DotSettings"
-);
+var PKG_ROOT = fs9.existsSync(path7.resolve(__dirname2, "..", "package.json")) ? path7.resolve(__dirname2, "..") : path7.resolve(__dirname2, "..", "..");
+var SETTINGS_PATH = path7.resolve(PKG_ROOT, "hooks", "TripleDot.DotSettings");
 var noopLogger3 = { log() {
 }, error() {
 } };
@@ -22091,7 +22083,7 @@ function expandAndMerge(ranges, buffer, lineCount) {
 function filterHunks(original, linted, allowedRanges) {
   if (allowedRanges.length === 0) return original;
   if (original === linted) return original;
-  const patch = structuredPatch("file", "file", original, linted, "", "", { context: 0 });
+  const patch = structuredPatch("file", "file", original, linted, "", "", { context: 1 });
   const acceptedHunks = patch.hunks.filter((hunk) => {
     const hunkStart = hunk.oldStart;
     const hunkEnd = hunk.oldStart + Math.max(hunk.oldLines - 1, 0);
@@ -22180,7 +22172,8 @@ async function lint(projectPath, options = {}) {
   if (fs9.existsSync(SETTINGS_PATH)) {
     args.push(`--settings=${SETTINGS_PATH}`);
   }
-  args.push("--profile=Built-in: Full Cleanup");
+  args.push("--disable-settings-layers=SolutionShared;SolutionPersonal;ProjectShared;ProjectPersonal");
+  args.push("--profile=Formatting and Braces");
   args.push("--verbosity=WARN");
   try {
     await execFileAsync("jb", args, { timeout: 12e4 });

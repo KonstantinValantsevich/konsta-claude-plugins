@@ -95,6 +95,100 @@ export function editModeTestAsmdef(): string {
 }
 
 /**
+ * Baseline for brace atomicity test — brace-less control flow spread across
+ * the file so some statements are near the edit and some are far away.
+ */
+export function braceTestBaseline(): string {
+  return `using UnityEngine;
+
+public class BraceAtomic : MonoBehaviour
+{
+    private int value = 5;
+    private int count = 3;
+
+    void Start()
+    {
+        Debug.Log("start");
+    }
+
+    void Update()
+    {
+        if (value > 10)
+            Debug.Log("high");
+
+        value = Calculate(value);
+    }
+
+    int Calculate(int v)
+    {
+        return v + 1;
+    }
+
+    void ProcessInput()
+    {
+        for (int i = 0; i < value; i++)
+            Debug.Log(i);
+    }
+
+    void Cleanup()
+    {
+        while (count > 0)
+            count--;
+
+        Debug.Log("done");
+    }
+}
+`;
+}
+
+/**
+ * Edited version of braceTestBaseline — single line change inside Update().
+ * The nearby if (line ~17) should get braces; the far-away while (~38) should not.
+ */
+export function braceTestEdited(): string {
+  return `using UnityEngine;
+
+public class BraceAtomic : MonoBehaviour
+{
+    private int value = 5;
+    private int count = 3;
+
+    void Start()
+    {
+        Debug.Log("start");
+    }
+
+    void Update()
+    {
+        if (value > 10)
+            Debug.Log("high");
+
+        value = Calculate(value) * 2;
+    }
+
+    int Calculate(int v)
+    {
+        return v + 1;
+    }
+
+    void ProcessInput()
+    {
+        for (int i = 0; i < value; i++)
+            Debug.Log(i);
+    }
+
+    void Cleanup()
+    {
+        while (count > 0)
+            count--;
+
+        Debug.Log("done");
+    }
+}
+`;
+}
+
+/**
  * Badly formatted C# script that violates many DotSettings rules.
  * Used by Phase 04 (lint) to verify JetBrains cleanup.
  */

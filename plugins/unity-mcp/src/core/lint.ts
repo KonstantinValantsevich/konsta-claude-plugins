@@ -11,13 +11,11 @@ const execFileAsync = promisify(execFile);
 const execAsync = promisify(exec);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const SETTINGS_PATH = path.resolve(
-  __dirname,
-  "..",
-  "..",
-  "hooks",
-  "TripleDot.DotSettings",
-);
+// Resolve package root: from source (src/core/) need 2 levels up, from bundle (dist/) need 1
+const PKG_ROOT = fs.existsSync(path.resolve(__dirname, "..", "package.json"))
+  ? path.resolve(__dirname, "..")
+  : path.resolve(__dirname, "..", "..");
+const SETTINGS_PATH = path.resolve(PKG_ROOT, "hooks", "TripleDot.DotSettings");
 
 const noopLogger: Logger = { log() {}, error() {} };
 
@@ -144,7 +142,7 @@ export function filterHunks(
   if (allowedRanges.length === 0) return original;
   if (original === linted) return original;
 
-  const patch = structuredPatch("file", "file", original, linted, "", "", { context: 0 });
+  const patch = structuredPatch("file", "file", original, linted, "", "", { context: 1 });
 
   // Determine which hunks overlap any allowed range
   // Hunk positions are 1-indexed. oldStart/oldLines = original side.
@@ -281,7 +279,9 @@ export async function lint(
   if (fs.existsSync(SETTINGS_PATH)) {
     args.push(`--settings=${SETTINGS_PATH}`);
   }
-  args.push("--profile=Built-in: Full Cleanup");
+  // Prevent solution/project-level settings from overriding our custom profile
+  args.push("--disable-settings-layers=SolutionShared;SolutionPersonal;ProjectShared;ProjectPersonal");
+  args.push("--profile=Formatting and Braces");
   args.push("--verbosity=WARN");
 
   try {

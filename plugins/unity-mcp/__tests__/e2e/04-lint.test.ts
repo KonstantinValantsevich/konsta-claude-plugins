@@ -7,6 +7,8 @@ import { createMcpClient, type McpTestClient } from "./helpers/mcp-client.js";
 import {
   simpleMonoBehaviour,
   badlyFormattedScript,
+  braceTestBaseline,
+  braceTestEdited,
 } from "./helpers/fixtures.js";
 
 // Read state at module level — describe.skipIf evaluates at parse time.
@@ -66,6 +68,12 @@ describe("Phase 04 — Lint", () => {
       // Read the file after lint and verify improvements
       const after = fs.readFileSync(filePath, "utf-8");
 
+      // Braces added to if/for/foreach/while
+      expect(after).not.toMatch(/\bif\s*\([^)]+\)\s*\n\s*[^{]/);
+      expect(after).not.toMatch(/\bfor\s*\([^)]+\)\s*\n\s*[^{]/);
+      expect(after).not.toMatch(/\bforeach\s*\([^)]+\)\s*\n\s*[^{]/);
+      expect(after).not.toMatch(/\bwhile\s*\([^)]+\)\s*\n\s*[^{]/);
+
       // Modifier order corrected: "static public" → "public static"
       expect(after).not.toContain("static public");
 
@@ -81,6 +89,41 @@ describe("Phase 04 — Lint", () => {
       expect(after).not.toMatch(/\bfor\(/);
       expect(after).not.toMatch(/\bforeach\(/);
       expect(after).not.toMatch(/\bwhile\(/);
+    });
+
+    it("test 19: brace pairs stay atomic — no orphan braces at range boundary", async () => {
+      const filePath = path.join(projectPath, "Assets", "BraceAtomic.cs");
+
+      // Commit a baseline with brace-less control flow
+      fs.writeFileSync(filePath, braceTestBaseline());
+      execSync("git add -A && git commit -m 'add BraceAtomic'", {
+        cwd: projectPath,
+        stdio: "ignore",
+      });
+
+      // Edit a single line in the middle — brace-less statements nearby and far
+      fs.writeFileSync(filePath, braceTestEdited());
+
+      // Run lint
+      const text = await mcp.callTool("unity_lint");
+      expect(text).toMatch(/linted \d+ file/i);
+
+      const after = fs.readFileSync(filePath, "utf-8");
+
+      // Brace balance must be preserved — no orphan { or }
+      const openCount = (after.match(/{/g) || []).length;
+      const closeCount = (after.match(/}/g) || []).length;
+      expect(openCount).toBe(closeCount);
+
+      // Nearby brace-less if should get braces (within buffer range)
+      expect(after).not.toMatch(/if \(value > 10\)\s*\n\s*[^{]/);
+
+      // Far-away brace-less while should NOT get braces (outside buffer range)
+      expect(after).toMatch(/while \(count > 0\)\s*\n/);
+
+      // No structural changes — method order preserved
+      const methodOrder = [...after.matchAll(/void (\w+)\(/g)].map((m) => m[1]);
+      expect(methodOrder).toEqual(["Start", "Update", "ProcessInput", "Cleanup"]);
     });
   });
 });

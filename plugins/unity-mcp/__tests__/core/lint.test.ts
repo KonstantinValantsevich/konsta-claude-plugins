@@ -130,11 +130,12 @@ describe("getEditedLineRanges", () => {
 
 describe("filterHunks", () => {
   it("keeps changes within allowed range (same line count)", () => {
-    const original = "line 1\nline 2\nline 3\nline 4\nline 5\n";
-    const linted = "line 1\nFIXED 2\nline 3\nFIXED 4\nline 5\n";
-    // Only allow range around line 2
+    // Changes must be >2 lines apart so context:1 doesn't merge them
+    const original = "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\n";
+    const linted = "line 1\nFIXED 2\nline 3\nline 4\nline 5\nline 6\nFIXED 7\n";
+    // Only allow range around line 2 — change at line 7 is far enough to be separate
     const result = filterHunks(original, linted, [[2, 2]]);
-    expect(result).toBe("line 1\nFIXED 2\nline 3\nline 4\nline 5\n");
+    expect(result).toBe("line 1\nFIXED 2\nline 3\nline 4\nline 5\nline 6\nline 7\n");
   });
 
   it("discards changes fully outside allowed range", () => {
@@ -189,6 +190,62 @@ describe("filterHunks", () => {
     const content = "line 1\nline 2\nline 3\n";
     const result = filterHunks(content, content, [[1, 3]]);
     expect(result).toBe(content);
+  });
+
+  it("keeps brace pairs atomic — no orphan opening brace", () => {
+    // Simulates: if statement on line 2, body on line 3, linter adds { and }
+    const original = "A\nif (x)\n    doStuff();\nB\nC\n";
+    const linted = "A\nif (x) {\n    doStuff();\n}\nB\nC\n";
+    // Range covers lines 2-3 (the if + body) — both { and } must survive
+    const result = filterHunks(original, linted, [[2, 3]]);
+    expect(result).toBe(linted);
+    // Brace balance preserved
+    const opens = (result.match(/{/g) || []).length;
+    const closes = (result.match(/}/g) || []).length;
+    expect(opens).toBe(closes);
+  });
+
+  it("rejects brace pair entirely when outside range", () => {
+    // Brace change far from allowed range — both { and } must be rejected
+    const original = "A\nB\nC\nif (x)\n    doStuff();\nD\n";
+    const linted = "A\nB\nC\nif (x) {\n    doStuff();\n}\nD\n";
+    // Range only covers line 1 — brace pair at lines 4-5 should be rejected
+    const result = filterHunks(original, linted, [[1, 1]]);
+    expect(result).toBe(original);
+  });
+
+  it("does not produce orphan braces at range boundary", () => {
+    // Two brace additions: one near range, one far
+    const original = [
+      "A",           // 1
+      "if (a)",      // 2
+      "    doA();",  // 3 — in range
+      "B",           // 4
+      "C",           // 5
+      "D",           // 6
+      "if (b)",      // 7
+      "    doB();",  // 8 — out of range
+      "E",           // 9
+    ].join("\n") + "\n";
+
+    const linted = [
+      "A",           // 1
+      "if (a) {",    // 2
+      "    doA();",  // 3
+      "}",           // new
+      "B",           // 5
+      "C",           // 6
+      "D",           // 7
+      "if (b) {",    // 8
+      "    doB();",  // 9
+      "}",           // new
+      "E",           // 11
+    ].join("\n") + "\n";
+
+    const result = filterHunks(original, linted, [[2, 4]]);
+    const opens = (result.match(/{/g) || []).length;
+    const closes = (result.match(/}/g) || []).length;
+    expect(opens).toBe(closes);
   });
 });
 
