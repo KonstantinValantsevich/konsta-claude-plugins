@@ -11,8 +11,10 @@ internal static class ClaudeBridgeBase
 {
     private const int ProtocolVersion = 1;
     private const string BridgeVersion = "4";
-    private const string RequestFileName = "request.json";
+    private const string RequestFilePrefix = "request-";
+    private const string StatusFilePrefix = "status-";
     private const string ReadyFileName = "bridge-ready.json";
+    private const long StaleThresholdMs = 5 * 60 * 1000; // 5 minutes
 
     [Serializable]
     internal class RequestPayload
@@ -72,10 +74,11 @@ internal static class ClaudeBridgeBase
     private static Timer _loopKickTimer;
     private static readonly HashSet<string> ProcessedRequestIds = new HashSet<string>();
     private static readonly Dictionary<string, ActionHandler> ActionHandlers = new Dictionary<string, ActionHandler>();
+    private static readonly List<RequestPayload> RequestQueue = new List<RequestPayload>();
+    private static readonly HashSet<string> AcknowledgedRequestIds = new HashSet<string>();
 
     internal static string ProjectPath => Directory.GetParent(Application.dataPath).FullName;
     internal static string IpcDir => Path.Combine(ProjectPath, "Library", "ClaudeHookIPC");
-    private static string RequestPath => Path.Combine(IpcDir, RequestFileName);
     private static string ReadyPath => Path.Combine(IpcDir, ReadyFileName);
 
     private static string _busyRequestId;
@@ -154,8 +157,10 @@ internal static class ClaudeBridgeBase
     {
         if (request == null) return;
         ProcessedRequestIds.Add(request.requestId);
-        TryDeleteRequestFileIfMatches(request.requestId);
+        AcknowledgedRequestIds.Remove(request.requestId);
+        TryDeleteRequestFile(request.requestId);
         MarkFree();
+        QueueRequestCheck();
     }
 
     internal static long NowUnixMs()
@@ -177,7 +182,7 @@ internal static class ClaudeBridgeBase
                 _watcher = null;
             }
 
-            _watcher = new FileSystemWatcher(IpcDir, RequestFileName)
+            _watcher = new FileSystemWatcher(IpcDir, "request-*.json")
             {
                 NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.CreationTime | NotifyFilters.Size,
                 IncludeSubdirectories = false,
@@ -216,43 +221,114 @@ internal static class ClaudeBridgeBase
     {
         lock (Sync) { _requestCheckQueued = false; }
 
-        RequestPayload request = TryReadRequest();
-        if (request == null) return;
+        long now = NowUnixMs();
+        List<RequestPayload> scanned = ScanRequestFiles();
 
-        if (request.protocolVersion != ProtocolVersion)
+        foreach (var request in scanned)
         {
-            WriteStatus(request, "bridge_error", false, false, "Unsupported protocol version");
-            return;
+            if (!string.Equals(request.projectPath ?? string.Empty, ProjectPath, StringComparison.Ordinal))
+                continue;
+            if (string.IsNullOrEmpty(request.requestId)) continue;
+
+            if (ProcessedRequestIds.Contains(request.requestId))
+            {
+                TryDeleteRequestFile(request.requestId);
+                continue;
+            }
+
+            // Skip already acknowledged (within this session)
+            if (AcknowledgedRequestIds.Contains(request.requestId)) continue;
+
+            // Skip stale requests (older than 5 minutes)
+            if (request.requestedAtUnixMs > 0 && (now - request.requestedAtUnixMs) > StaleThresholdMs)
+            {
+                TryDeleteRequestFile(request.requestId);
+                continue;
+            }
+
+            // Domain reload safety: check for existing status file
+            string statusPath = Path.Combine(IpcDir, StatusFilePrefix + request.requestId + ".json");
+            if (File.Exists(statusPath))
+            {
+                try
+                {
+                    string statusJson = File.ReadAllText(statusPath);
+                    var statusObj = JsonUtility.FromJson<StatusPayload>(statusJson);
+                    if (statusObj != null)
+                    {
+                        if (IsTerminalState(statusObj.state))
+                        {
+                            TryDeleteRequestFile(request.requestId);
+                            continue;
+                        }
+                        if (statusObj.state == "queued")
+                        {
+                            AcknowledgedRequestIds.Add(request.requestId);
+                            RequestQueue.Add(request);
+                            continue;
+                        }
+                        WriteStatus(request, "bridge_error", false, false, "Domain reload interrupted processing");
+                        TryDeleteRequestFile(request.requestId);
+                        continue;
+                    }
+                }
+                catch (Exception) { /* couldn't read status — treat as new */ }
+            }
+
+            if (request.protocolVersion != ProtocolVersion)
+            {
+                WriteStatus(request, "bridge_error", false, false, "Unsupported protocol version");
+                TryDeleteRequestFile(request.requestId);
+                continue;
+            }
+
+            WriteStatus(request, "queued", false, false, "Request queued for processing");
+            AcknowledgedRequestIds.Add(request.requestId);
+            RequestQueue.Add(request);
         }
 
-        if (!string.Equals(request.projectPath ?? string.Empty, ProjectPath, StringComparison.Ordinal)) return;
-        if (string.IsNullOrEmpty(request.requestId)) return;
-        if (ProcessedRequestIds.Contains(request.requestId)) return;
+        RequestQueue.Sort((a, b) => a.requestedAtUnixMs.CompareTo(b.requestedAtUnixMs));
 
-        if (_busyRequestId != null)
+        if (_busyRequestId == null && RequestQueue.Count > 0)
         {
-            if (_busyRequestId == request.requestId) return;
-            WriteStatus(request, "busy", false, false, "Bridge is busy with another request");
-            return;
+            RequestPayload next = RequestQueue[0];
+            RequestQueue.RemoveAt(0);
+            DispatchRequest(next);
         }
 
+        CleanupStaleFiles(now);
+    }
+
+    private static bool IsTerminalState(string state)
+    {
+        return state == "completed" || state == "failed" || state == "bridge_error"
+            || state == "timeout" || state == "tests_finished" || state == "list_tests_finished";
+    }
+
+    private static void DispatchRequest(RequestPayload request)
+    {
         if (request.action == "bootstrap_handshake")
         {
             WriteStatus(request, "completed", false, true, "Bridge loaded and handshake acknowledged");
             ProcessedRequestIds.Add(request.requestId);
-            TryDeleteRequestFileIfMatches(request.requestId);
+            AcknowledgedRequestIds.Remove(request.requestId);
+            TryDeleteRequestFile(request.requestId);
+            QueueRequestCheck();
             return;
         }
 
         if (ActionHandlers.TryGetValue(request.action, out var handler))
         {
+            // Handlers call MarkBusy internally via their registration pattern
             handler(request, NowUnixMs());
         }
         else
         {
             WriteStatus(request, "bridge_error", false, false, "Unsupported action: " + request.action);
             ProcessedRequestIds.Add(request.requestId);
-            TryDeleteRequestFileIfMatches(request.requestId);
+            AcknowledgedRequestIds.Remove(request.requestId);
+            TryDeleteRequestFile(request.requestId);
+            QueueRequestCheck();
         }
     }
 
@@ -274,7 +350,7 @@ internal static class ClaudeBridgeBase
     {
         lock (Sync)
         {
-            bool needsKicks = _requestCheckQueued || _busyRequestId != null;
+            bool needsKicks = _requestCheckQueued || _busyRequestId != null || RequestQueue.Count > 0;
             if (!needsKicks && _loopKickTimer != null)
             {
                 try { _loopKickTimer.Dispose(); } catch (Exception) { }
@@ -292,16 +368,28 @@ internal static class ClaudeBridgeBase
         try { EditorApplication.QueuePlayerLoopUpdate(); } catch (Exception) { }
     }
 
-    private static RequestPayload TryReadRequest()
+    private static List<RequestPayload> ScanRequestFiles()
     {
+        var results = new List<RequestPayload>();
         try
         {
-            if (!File.Exists(RequestPath)) return null;
-            string json = File.ReadAllText(RequestPath);
-            if (string.IsNullOrWhiteSpace(json)) return null;
-            return JsonUtility.FromJson<RequestPayload>(json);
+            string[] files = Directory.GetFiles(IpcDir, "request-*.json");
+            foreach (string filePath in files)
+            {
+                if (filePath.EndsWith(".tmp")) continue;
+                try
+                {
+                    string json = File.ReadAllText(filePath);
+                    if (string.IsNullOrWhiteSpace(json)) continue;
+                    var request = JsonUtility.FromJson<RequestPayload>(json);
+                    if (request != null && !string.IsNullOrEmpty(request.requestId))
+                        results.Add(request);
+                }
+                catch (Exception) { /* skip unreadable files */ }
+            }
         }
-        catch (Exception) { return null; }
+        catch (Exception) { /* directory access failed */ }
+        return results;
     }
 
     private static void WriteReady()
@@ -340,14 +428,51 @@ internal static class ClaudeBridgeBase
         }
     }
 
-    private static void TryDeleteRequestFileIfMatches(string requestId)
+    private static void TryDeleteRequestFile(string requestId)
     {
         try
         {
-            if (!File.Exists(RequestPath)) return;
-            RequestPayload current = TryReadRequest();
-            if (current != null && current.requestId == requestId) File.Delete(RequestPath);
+            string path = Path.Combine(IpcDir, RequestFilePrefix + requestId + ".json");
+            if (File.Exists(path)) File.Delete(path);
         }
         catch (Exception) { }
+    }
+
+    private static void CleanupStaleFiles(long nowMs)
+    {
+        try
+        {
+            string[] statusFiles = Directory.GetFiles(IpcDir, "status-*.json");
+            foreach (string filePath in statusFiles)
+            {
+                if (filePath.EndsWith(".tmp")) continue;
+                try
+                {
+                    string json = File.ReadAllText(filePath);
+                    var status = JsonUtility.FromJson<StatusPayload>(json);
+                    if (status == null) continue;
+                    if (!IsTerminalState(status.state)) continue;
+                    if (status.updatedAtUnixMs > 0 && (nowMs - status.updatedAtUnixMs) > StaleThresholdMs)
+                        File.Delete(filePath);
+                }
+                catch (Exception) { /* skip unreadable */ }
+            }
+
+            string[] requestFiles = Directory.GetFiles(IpcDir, "request-*.json");
+            foreach (string filePath in requestFiles)
+            {
+                if (filePath.EndsWith(".tmp")) continue;
+                try
+                {
+                    string json = File.ReadAllText(filePath);
+                    var request = JsonUtility.FromJson<RequestPayload>(json);
+                    if (request == null) continue;
+                    if (request.requestedAtUnixMs > 0 && (nowMs - request.requestedAtUnixMs) > StaleThresholdMs)
+                        File.Delete(filePath);
+                }
+                catch (Exception) { /* skip unreadable */ }
+            }
+        }
+        catch (Exception) { /* directory access failed */ }
     }
 }
