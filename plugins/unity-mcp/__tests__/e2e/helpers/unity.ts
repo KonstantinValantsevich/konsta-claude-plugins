@@ -34,7 +34,7 @@ export function findLatestUnityVersion(): string {
 
 /** Full path to Unity binary for a version string. */
 export function unityBinaryPath(version: string): string {
-  return path.join(unityAppPath(version), "Contents/MacOS/Unity");
+  return path.join(UNITY_HUB_EDITOR_DIR, version, "Unity.app", "Contents/MacOS/Unity");
 }
 
 /**
