@@ -55,6 +55,7 @@ internal static class ClaudeBridgeBase
         public List<ErrorPayload> errors;
         public string summary;
         public string testResults;
+        public string searchResults;
     }
 
     [Serializable]
@@ -93,6 +94,7 @@ internal static class ClaudeBridgeBase
 
             ClaudeRecompileHandler.Register();
             ClaudeTestHandler.Register();
+            ClaudeSearchHandler.Register();
 
             StartWatcher();
             WriteReady();
@@ -149,6 +151,32 @@ internal static class ClaudeBridgeBase
         if (errors != null && errors.Count > 0)
             Debug.Log($"[ClaudeBridge] WriteStatus: errorCount={errors.Count} json.contains(\"file\")={json.Contains("file")} jsonLength={json.Length}\n[ClaudeBridge] JSON snippet (errors): {(json.Length > 500 ? json.Substring(0, 500) : json)}");
 
+        string path = Path.Combine(IpcDir, "status-" + request.requestId + ".json");
+        TryWriteJsonAtomic(path, json);
+    }
+
+    internal static void WriteSearchStatus(RequestPayload request, string state, bool isSuccess, string summary, string searchResultsJson)
+    {
+        if (request == null || string.IsNullOrEmpty(request.requestId))
+            return;
+
+        var payload = new StatusPayload
+        {
+            protocolVersion = ProtocolVersion,
+            requestId = request.requestId,
+            bridgeVersion = BridgeVersion,
+            projectPath = ProjectPath,
+            state = state,
+            createdAtUnixMs = NowUnixMs(),
+            updatedAtUnixMs = NowUnixMs(),
+            didCompile = false,
+            isSuccess = isSuccess,
+            errors = new List<ErrorPayload>(),
+            summary = summary ?? string.Empty,
+            searchResults = searchResultsJson,
+        };
+
+        string json = JsonUtility.ToJson(payload, true);
         string path = Path.Combine(IpcDir, "status-" + request.requestId + ".json");
         TryWriteJsonAtomic(path, json);
     }

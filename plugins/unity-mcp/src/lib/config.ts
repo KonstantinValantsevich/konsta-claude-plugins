@@ -23,6 +23,7 @@ export const BRIDGE_CS_FILES = [
   "ClaudeBridgeBase.cs",
   "ClaudeRecompileHandler.cs",
   "ClaudeTestHandler.cs",
+  "ClaudeSearchHandler.cs",
 ];
 export const BRIDGE_IPC_DIRNAME = "Library/ClaudeHookIPC";
 export const BRIDGE_READY_FILENAME = "bridge-ready.json";
