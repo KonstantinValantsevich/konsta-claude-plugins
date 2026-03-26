@@ -50,7 +50,9 @@ describe("Phase 06 — Search", () => {
   });
 
   it("test 22: basic type query returns results", async () => {
-    const text = await mcp.readResource("unity://assets/search/t:MonoScript");
+    const text = await mcp.callTool("unity_search_assets", {
+      query: "t:MonoScript",
+    });
     const results = JSON.parse(text);
 
     expect(Array.isArray(results)).toBe(true);
@@ -63,7 +65,9 @@ describe("Phase 06 — Search", () => {
   });
 
   it("test 23: query for fixture asset finds it", async () => {
-    const text = await mcp.readResource("unity://assets/search/SearchTestPlayer");
+    const text = await mcp.callTool("unity_search_assets", {
+      query: "SearchTestPlayer",
+    });
     const results = JSON.parse(text);
 
     expect(Array.isArray(results)).toBe(true);
@@ -74,9 +78,10 @@ describe("Phase 06 — Search", () => {
   });
 
   it("test 24: limit parameter is respected", async () => {
-    const text = await mcp.readResource(
-      "unity://assets/search/t:MonoScript?limit=2",
-    );
+    const text = await mcp.callTool("unity_search_assets", {
+      query: "t:MonoScript",
+      limit: 2,
+    });
     const results = JSON.parse(text);
 
     expect(Array.isArray(results)).toBe(true);
@@ -84,9 +89,9 @@ describe("Phase 06 — Search", () => {
   });
 
   it("test 25: no-match query returns empty array", async () => {
-    const text = await mcp.readResource(
-      "unity://assets/search/xyzzy_nonexistent_asset_12345",
-    );
+    const text = await mcp.callTool("unity_search_assets", {
+      query: "xyzzy_nonexistent_asset_12345",
+    });
     const results = JSON.parse(text);
 
     expect(Array.isArray(results)).toBe(true);
@@ -94,9 +99,10 @@ describe("Phase 06 — Search", () => {
   });
 
   it("test 26: negative limit is clamped to 1", async () => {
-    const text = await mcp.readResource(
-      "unity://assets/search/t:MonoScript?limit=-1",
-    );
+    const text = await mcp.callTool("unity_search_assets", {
+      query: "t:MonoScript",
+      limit: -1,
+    });
     const results = JSON.parse(text);
 
     expect(Array.isArray(results)).toBe(true);

@@ -20,6 +20,7 @@ describe("MCP server", () => {
       "unity_list_tests",
       "unity_recompile",
       "unity_run_tests",
+      "unity_search_assets",
       "unity_status",
       "unity_test_results",
     ]);
@@ -28,17 +29,13 @@ describe("MCP server", () => {
     await server.close();
   });
 
-  it("registers asset search resource template and syntax resource", async () => {
+  it("registers search syntax resource", async () => {
     const server = createServer();
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
 
     await server.connect(serverTransport);
     const client = new Client({ name: "test-client", version: "1.0.0" });
     await client.connect(clientTransport);
-
-    const { resourceTemplates } = await client.listResourceTemplates();
-    const templateNames = resourceTemplates.map((t) => t.name);
-    expect(templateNames).toContain("unity_asset_search");
 
     const { resources } = await client.listResources();
     const resourceNames = resources.map((r) => r.name);

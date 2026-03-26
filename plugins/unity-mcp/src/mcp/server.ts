@@ -1,4 +1,4 @@
-import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { recompile } from "../core/recompile.js";
@@ -243,14 +243,9 @@ When the project search index is built, serialized properties can be queried dir
     }),
   );
 
-  // Dynamic resource template: asset search
-  const searchTemplate = new ResourceTemplate("unity://assets/search/{query}", { list: undefined });
-
-  server.registerResource(
-    "unity_asset_search",
-    searchTemplate,
-    {
-      description: `Search Unity project assets. Returns JSON array of {id, label, score}.
+  server.tool(
+    "unity_search_assets",
+    `Search Unity project assets. Returns JSON array of {id, label, score}.
 Common query syntax:
   - By name: "enemy", "player*"
   - By type: "t:prefab", "t:material", "t:texture", "t:scene"
@@ -260,57 +255,29 @@ Common query syntax:
   - Combined: "t:prefab enemy" (AND), "player or monster" (OR)
   - Exclude: "-t:scene" (NOT)
   - Prefab variants: "prefab:variant", "prefab:model"
-Read unity://assets/search-syntax for full syntax reference.`,
-      mimeType: "application/json",
+Read unity://assets/search-syntax resource for full syntax reference.`,
+    {
+      projectPath: z.string().describe("Unity project root path"),
+      query: z.string().describe("Search query string (e.g. \"t:prefab enemy\", \"ext:cs age<7\")"),
+      limit: z.number().optional().default(10).describe("Max results to return (default 10, max 500)"),
     },
-    async (uri, variables) => {
-      // Extract query from the parsed URL pathname instead of variables —
-      // the URI template match captures "?limit=2" as part of {query}.
-      const searchPrefix = "/search/";
-      const pathIdx = uri.pathname.indexOf(searchPrefix);
-      const query = pathIdx >= 0
-        ? decodeURIComponent(uri.pathname.slice(pathIdx + searchPrefix.length))
-        : "";
-      if (!query) {
-        return {
-          contents: [{
-            uri: uri.href,
-            mimeType: "application/json",
-            text: "[]",
-          }],
-        };
-      }
-
-      // Parse limit from query string
-      const limitParam = uri.searchParams.get("limit");
-      const limit = limitParam ? parseInt(limitParam, 10) : undefined;
-
-      // Auto-detect project path (same logic as tools)
-      const projectPath = process.cwd();
-
+    async ({ projectPath, query, limit }) => {
       const result = await searchAssets({
         projectPath,
         query,
-        limit: Number.isFinite(limit) ? limit : undefined,
+        limit,
         logger: stderrLogger,
       });
 
       if (!result.ok) {
         return {
-          contents: [{
-            uri: uri.href,
-            mimeType: "text/plain",
-            text: `Search failed: ${result.error}`,
-          }],
+          content: [{ type: "text" as const, text: `Search failed: ${result.error}` }],
+          isError: true,
         };
       }
 
       return {
-        contents: [{
-          uri: uri.href,
-          mimeType: "application/json",
-          text: JSON.stringify(result.results),
-        }],
+        content: [{ type: "text" as const, text: JSON.stringify(result.results) }],
       };
     },
   );
