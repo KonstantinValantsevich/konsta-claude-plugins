@@ -264,7 +264,13 @@ Read unity://assets/search-syntax for full syntax reference.`,
       mimeType: "application/json",
     },
     async (uri, variables) => {
-      const query = decodeURIComponent(String(variables.query ?? ""));
+      // Extract query from the parsed URL pathname instead of variables —
+      // the URI template match captures "?limit=2" as part of {query}.
+      const searchPrefix = "/search/";
+      const pathIdx = uri.pathname.indexOf(searchPrefix);
+      const query = pathIdx >= 0
+        ? decodeURIComponent(uri.pathname.slice(pathIdx + searchPrefix.length))
+        : "";
       if (!query) {
         return {
           contents: [{
