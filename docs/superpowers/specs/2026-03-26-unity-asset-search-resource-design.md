@@ -16,9 +16,9 @@ Claude currently has no way to search for assets (prefabs, materials, textures, 
 
 A dynamic resource template that executes a Unity Search query and returns matching assets.
 
-**Parameters:**
-- `query` (string, required) — Unity Search syntax query (URI-encoded)
-- `limit` (number, optional, default: 100, max: 500) — Maximum number of results to return
+**URI format:** `unity://assets/search/{query}?limit={limit}`
+- `query` (string, required) — Unity Search syntax query, URI-encoded. Example: `unity://assets/search/t%3Aprefab%20enemy` for `t:prefab enemy`
+- `limit` (number, optional, default: 100, max: 500) — passed as query string parameter
 
 **Response format:** `application/json`
 
@@ -33,7 +33,7 @@ A dynamic resource template that executes a Unity Search query and returns match
 - `label` — Display name (from `SearchItem.label`)
 - `score` — Relevance score, lower = more relevant (from `SearchItem.score`)
 
-Results are sorted by score (most relevant first) and capped at `limit`.
+Results are sorted by score (most relevant first) and capped at `limit`. An empty search returns `[]` (not an error).
 
 **Description (on the resource template registration):**
 
@@ -143,19 +143,25 @@ New template file installed alongside existing handlers at `Assets/Claude Bridge
 ```
 
 **Implementation flow:**
-1. Parse payload — extract `query` string and `limit` (default 100, hard max 500)
-2. Create search context: `SearchService.CreateContext("asset", query)`
-3. Execute search via `SearchService.Request()` with async callback
-4. On completion: sort results by `score`, take first `limit` items
-5. Map each `SearchItem` to `{ id: item.id, label: item.label ?? item.GetLabel(), score: item.score }`
-6. Serialize results array as JSON string into status file `searchResults` field
-7. Write terminal status `"completed"`
+1. Call `MarkBusy(request.requestId)` at handler entry
+2. Parse payload — extract `query` string and `limit` (default 100, hard max 500)
+3. Create search context: `SearchService.CreateContext("asset", query)`
+4. Execute search via `SearchService.Request()` with async callback
+5. On completion: sort results by `score`, take first `limit` items
+6. Map each `SearchItem` to `{ id: item.id, label: item.label ?? item.GetLabel(), score: item.score }`
+7. Serialize results array as JSON string — pass through existing `testResultsJson` parameter on `WriteStatus` (reusing the same wire field, see Bridge Protocol section)
+8. Write terminal status `"completed"` via `WriteStatus`
+9. Call `FinalizeRequest(request)` to release the queue
+
+**Error handling:**
+- Wrap steps 3-6 in try/finally — dispose `SearchContext` and call `FinalizeRequest` in all paths
+- On exception: write `"failed"` status with error summary, then `FinalizeRequest`
 
 **Considerations:**
 - Scoped to `"asset"` provider only (no scene/hierarchy)
 - Search runs on main thread (consistent with other handlers)
-- Timeout handled by existing bridge infrastructure
-- `SearchContext` must be disposed after use
+- Uses default `BRIDGE_STATUS_TIMEOUT_MS` timeout (search should be fast with indexed projects)
+- `SearchContext` must be disposed in a finally block to prevent leaks
 
 ### TypeScript: Resource Registration in `server.ts`
 
@@ -169,7 +175,7 @@ Register two resources on the MCP server:
 2. Resolve `projectPath` (same auto-detection as existing tools)
 3. Send bridge request with action `"search_assets"` and payload `{ query, limit }`
 4. Wait for status via `waitForBridgeStatus()`
-5. Parse `searchResults` from status file
+5. Parse search results from the `testResults` wire field in the status file (action-aware parsing)
 6. Return as `application/json` content
 
 ### Bridge Protocol
@@ -180,8 +186,12 @@ Reuses existing file-based IPC. New additions:
 - `action: "search_assets"`
 - `payload: '{"query":"t:prefab enemy","limit":100}'`
 
-**Status file** — same format, with new field:
-- `searchResults: '[{"id":"Assets/...","label":"...","score":0},...]'` (JSON string)
+**Status file** — reuses the existing `testResults` wire field for search results JSON:
+- `testResults: '[{"id":"Assets/...","label":"...","score":0},...]'` (JSON string)
+
+This reuses the existing `testResultsJson` parameter on `WriteStatus` rather than adding a new field. The TypeScript side distinguishes the content by checking the original action type — when action is `"search_assets"`, the `testResults` field is parsed as `SearchResult[]` instead of `TestResults`.
+
+**Terminal state:** Reuses `"completed"` — no new terminal state needed. The existing `TERMINAL_STATES` set already includes it.
 
 No protocol version bump needed — this is an additive change.
 
@@ -190,8 +200,9 @@ No protocol version bump needed — this is an additive change.
 | File | Change |
 |------|--------|
 | `src/mcp/server.ts` | Add resource template + static resource registration |
-| `src/core/search.ts` | New file — search resource read handler logic |
-| `src/lib/bridge/types.ts` | Add `searchResults` to `BridgeStatus` type |
+| `src/core/search.ts` | New file — search resource read handler logic (follows existing core module pattern: accepts `projectPath` + `logger`, calls `sendBridgeRequest`) |
+| `src/lib/bridge/types.ts` | Add `"search_assets"` to `BridgeAction` union; generalize `BridgeRequest.payload` from `TestDiscoveryFilters` to `TestDiscoveryFilters \| SearchPayload`; add `SearchPayload` and `SearchResult` interfaces |
+| `src/lib/bridge/request.ts` | Update `sendBridgeRequest` opts type to accept `SearchPayload`; add `"search_assets"` to `defaultTimeout` (uses `BRIDGE_STATUS_TIMEOUT_MS`) and `reasonForAction` |
 | `templates/ClaudeBridgeBase.cs` | Register `"search_assets"` action handler |
 | `templates/ClaudeSearchHandler.cs` | New file — C# search handler |
 
