@@ -1,4 +1,4 @@
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { recompile } from "../core/recompile.js";
@@ -7,6 +7,7 @@ import { lint } from "../core/lint.js";
 import { runTests } from "../core/test.js";
 import { getTestResults } from "../core/test-results.js";
 import { listTests } from "../core/list-tests.js";
+import { searchAssets } from "../core/search.js";
 import type { Logger } from "../core/types.js";
 import { fileURLToPath } from "node:url";
 import nodePath from "node:path";
@@ -150,6 +151,160 @@ export function createServer(): McpServer {
 
       return {
         content: [{ type: "text" as const, text: result.formatted }],
+      };
+    },
+  );
+
+  // --- MCP Resources ---
+
+  const SEARCH_SYNTAX_CONTENT = `# Unity Asset Search Syntax Reference
+
+## Filter Tokens
+
+| Token | Description | Example |
+|-------|-------------|---------|
+| \`t:\` / \`t=\` | Type (partial/exact) | \`t:prefab\`, \`t=Texture2D\` |
+| \`l:\` / \`l=\` | Label (partial/exact) | \`l:arch\`, \`l=Wall\` |
+| \`ref:\` | References asset | \`ref:Crystal\`, \`ref="Assets/Prefabs/Crystal.prefab"\` |
+| \`ext:\` | File extension | \`ext:png\`, \`ext:cs\` |
+| \`dir:\` | Directory scope | \`dir:Assets/Prefabs\` |
+| \`name:\` | File name | \`name:laser\` |
+| \`size\` | File size (bytes) | \`size>4096\`, \`size<=1024\` |
+| \`age\` | Days since modified | \`age<3\`, \`age>30\` |
+| \`a:\` | Area | \`a:assets\`, \`a:packages\`, \`a:all\` |
+| \`prefab:\` | Prefab type | \`prefab:root\`, \`prefab:variant\`, \`prefab:model\`, \`prefab:modified\` |
+| \`is:\` | State filter | \`is:subasset\` |
+| \`missing:\` | Missing refs | \`missing:scripts\` |
+
+## Comparison Operators
+
+| Operator | Meaning | Example |
+|----------|---------|---------|
+| \`:\` | Contains/partial | \`t:texture\` |
+| \`=\` | Exact match | \`t=Texture2D\` |
+| \`!=\` | Not equal | \`filtermode!=0\` |
+| \`>\` | Greater than | \`size>4096\` |
+| \`<\` | Less than | \`age<3\` |
+| \`>=\` | Greater or equal | \`width>=4096\` |
+| \`<=\` | Less or equal | \`bounciness<=0.5\` |
+
+## Boolean Logic
+
+| Syntax | Meaning | Example |
+|--------|---------|---------|
+| space | AND (implicit) | \`t:texture volume\` |
+| \`or\` | OR | \`player or monster\` |
+| \`-\` | Exclude | \`-t:scene\` |
+| \`()\` | Grouping | \`t:prefab (enemy or ally)\` |
+| \`!\` | Exact name match | \`!stone\` |
+
+## Indexed Property Queries
+
+When the project search index is built, serialized properties can be queried directly:
+- Numeric: \`health=2\`, \`bounciness>0.1\`
+- Boolean: \`generatePath=true\`
+- String: \`trait:indestru\` (partial), \`trait="tough but fair"\` (exact)
+- Color (hex): \`color:ADA\`, \`color=ADADAD\`
+- Vector component: \`bounds.x>1\`, \`acceleration.z=2\`
+- Object ref: \`sprite:CharacterBody\`
+- Null check: \`property=none\`
+
+## Query Flags
+
+| Flag | Effect |
+|------|--------|
+| \`+noResultsLimit\` | Return all results (default cap ~2999) |
+| \`+fuzzy\` | Fuzzy/approximate matching |
+
+## Examples
+
+- All prefabs: \`t:prefab\`
+- Prefabs with "enemy" in name: \`t:prefab enemy\`
+- Large textures: \`t:texture size>1048576\`
+- Recently modified scripts: \`ext:cs age<7\`
+- Prefab variants: \`prefab:variant\`
+- Materials in specific folder: \`t:material dir:Assets/Art/Materials\`
+- Assets referencing a specific prefab: \`ref="Assets/Prefabs/Player.prefab"\``;
+
+  // Static resource: search syntax reference
+  server.registerResource(
+    "unity_asset_search_syntax",
+    "unity://assets/search-syntax",
+    {
+      description: "Full Unity asset search query syntax reference — filter tokens, operators, boolean logic, property queries, and examples.",
+      mimeType: "text/markdown",
+    },
+    async () => ({
+      contents: [{
+        uri: "unity://assets/search-syntax",
+        mimeType: "text/markdown",
+        text: SEARCH_SYNTAX_CONTENT,
+      }],
+    }),
+  );
+
+  // Dynamic resource template: asset search
+  const searchTemplate = new ResourceTemplate("unity://assets/search/{query}", { list: undefined });
+
+  server.registerResource(
+    "unity_asset_search",
+    searchTemplate,
+    {
+      description: `Search Unity project assets. Returns JSON array of {id, label, score}.
+Common query syntax:
+  - By name: "enemy", "player*"
+  - By type: "t:prefab", "t:material", "t:texture", "t:scene"
+  - By label: "l:mylabel"
+  - By extension: "ext:png", "ext:cs"
+  - By directory: "dir:Assets/Prefabs"
+  - Combined: "t:prefab enemy" (AND), "player or monster" (OR)
+  - Exclude: "-t:scene" (NOT)
+  - Prefab variants: "prefab:variant", "prefab:model"
+Read unity://assets/search-syntax for full syntax reference.`,
+      mimeType: "application/json",
+    },
+    async (uri, variables) => {
+      const query = decodeURIComponent(String(variables.query ?? ""));
+      if (!query) {
+        return {
+          contents: [{
+            uri: uri.href,
+            mimeType: "application/json",
+            text: "[]",
+          }],
+        };
+      }
+
+      // Parse limit from query string
+      const limitParam = uri.searchParams.get("limit");
+      const limit = limitParam ? parseInt(limitParam, 10) : undefined;
+
+      // Auto-detect project path (same logic as tools)
+      const projectPath = process.cwd();
+
+      const result = await searchAssets({
+        projectPath,
+        query,
+        limit: Number.isFinite(limit) ? limit : undefined,
+        logger: stderrLogger,
+      });
+
+      if (!result.ok) {
+        return {
+          contents: [{
+            uri: uri.href,
+            mimeType: "text/plain",
+            text: `Search failed: ${result.error}`,
+          }],
+        };
+      }
+
+      return {
+        contents: [{
+          uri: uri.href,
+          mimeType: "application/json",
+          text: JSON.stringify(result.results),
+        }],
       };
     },
   );

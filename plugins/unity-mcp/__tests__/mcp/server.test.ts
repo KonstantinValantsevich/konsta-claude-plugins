@@ -27,4 +27,24 @@ describe("MCP server", () => {
     await client.close();
     await server.close();
   });
+
+  it("registers asset search resource template and syntax resource", async () => {
+    const server = createServer();
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+
+    await server.connect(serverTransport);
+    const client = new Client({ name: "test-client", version: "1.0.0" });
+    await client.connect(clientTransport);
+
+    const { resourceTemplates } = await client.listResourceTemplates();
+    const templateNames = resourceTemplates.map((t) => t.name);
+    expect(templateNames).toContain("unity_asset_search");
+
+    const { resources } = await client.listResources();
+    const resourceNames = resources.map((r) => r.name);
+    expect(resourceNames).toContain("unity_asset_search_syntax");
+
+    await client.close();
+    await server.close();
+  });
 });

@@ -20033,6 +20033,228 @@ var McpZodTypeKind;
   McpZodTypeKind2["Completable"] = "McpCompletable";
 })(McpZodTypeKind || (McpZodTypeKind = {}));
 
+// node_modules/@modelcontextprotocol/sdk/dist/esm/shared/uriTemplate.js
+var MAX_TEMPLATE_LENGTH = 1e6;
+var MAX_VARIABLE_LENGTH = 1e6;
+var MAX_TEMPLATE_EXPRESSIONS = 1e4;
+var MAX_REGEX_LENGTH = 1e6;
+var UriTemplate = class _UriTemplate {
+  /**
+   * Returns true if the given string contains any URI template expressions.
+   * A template expression is a sequence of characters enclosed in curly braces,
+   * like {foo} or {?bar}.
+   */
+  static isTemplate(str) {
+    return /\{[^}\s]+\}/.test(str);
+  }
+  static validateLength(str, max, context) {
+    if (str.length > max) {
+      throw new Error(`${context} exceeds maximum length of ${max} characters (got ${str.length})`);
+    }
+  }
+  get variableNames() {
+    return this.parts.flatMap((part) => typeof part === "string" ? [] : part.names);
+  }
+  constructor(template) {
+    _UriTemplate.validateLength(template, MAX_TEMPLATE_LENGTH, "Template");
+    this.template = template;
+    this.parts = this.parse(template);
+  }
+  toString() {
+    return this.template;
+  }
+  parse(template) {
+    const parts = [];
+    let currentText = "";
+    let i = 0;
+    let expressionCount = 0;
+    while (i < template.length) {
+      if (template[i] === "{") {
+        if (currentText) {
+          parts.push(currentText);
+          currentText = "";
+        }
+        const end = template.indexOf("}", i);
+        if (end === -1)
+          throw new Error("Unclosed template expression");
+        expressionCount++;
+        if (expressionCount > MAX_TEMPLATE_EXPRESSIONS) {
+          throw new Error(`Template contains too many expressions (max ${MAX_TEMPLATE_EXPRESSIONS})`);
+        }
+        const expr = template.slice(i + 1, end);
+        const operator = this.getOperator(expr);
+        const exploded = expr.includes("*");
+        const names = this.getNames(expr);
+        const name = names[0];
+        for (const name2 of names) {
+          _UriTemplate.validateLength(name2, MAX_VARIABLE_LENGTH, "Variable name");
+        }
+        parts.push({ name, operator, names, exploded });
+        i = end + 1;
+      } else {
+        currentText += template[i];
+        i++;
+      }
+    }
+    if (currentText) {
+      parts.push(currentText);
+    }
+    return parts;
+  }
+  getOperator(expr) {
+    const operators = ["+", "#", ".", "/", "?", "&"];
+    return operators.find((op) => expr.startsWith(op)) || "";
+  }
+  getNames(expr) {
+    const operator = this.getOperator(expr);
+    return expr.slice(operator.length).split(",").map((name) => name.replace("*", "").trim()).filter((name) => name.length > 0);
+  }
+  encodeValue(value, operator) {
+    _UriTemplate.validateLength(value, MAX_VARIABLE_LENGTH, "Variable value");
+    if (operator === "+" || operator === "#") {
+      return encodeURI(value);
+    }
+    return encodeURIComponent(value);
+  }
+  expandPart(part, variables) {
+    if (part.operator === "?" || part.operator === "&") {
+      const pairs = part.names.map((name) => {
+        const value2 = variables[name];
+        if (value2 === void 0)
+          return "";
+        const encoded2 = Array.isArray(value2) ? value2.map((v) => this.encodeValue(v, part.operator)).join(",") : this.encodeValue(value2.toString(), part.operator);
+        return `${name}=${encoded2}`;
+      }).filter((pair) => pair.length > 0);
+      if (pairs.length === 0)
+        return "";
+      const separator = part.operator === "?" ? "?" : "&";
+      return separator + pairs.join("&");
+    }
+    if (part.names.length > 1) {
+      const values2 = part.names.map((name) => variables[name]).filter((v) => v !== void 0);
+      if (values2.length === 0)
+        return "";
+      return values2.map((v) => Array.isArray(v) ? v[0] : v).join(",");
+    }
+    const value = variables[part.name];
+    if (value === void 0)
+      return "";
+    const values = Array.isArray(value) ? value : [value];
+    const encoded = values.map((v) => this.encodeValue(v, part.operator));
+    switch (part.operator) {
+      case "":
+        return encoded.join(",");
+      case "+":
+        return encoded.join(",");
+      case "#":
+        return "#" + encoded.join(",");
+      case ".":
+        return "." + encoded.join(".");
+      case "/":
+        return "/" + encoded.join("/");
+      default:
+        return encoded.join(",");
+    }
+  }
+  expand(variables) {
+    let result = "";
+    let hasQueryParam = false;
+    for (const part of this.parts) {
+      if (typeof part === "string") {
+        result += part;
+        continue;
+      }
+      const expanded = this.expandPart(part, variables);
+      if (!expanded)
+        continue;
+      if ((part.operator === "?" || part.operator === "&") && hasQueryParam) {
+        result += expanded.replace("?", "&");
+      } else {
+        result += expanded;
+      }
+      if (part.operator === "?" || part.operator === "&") {
+        hasQueryParam = true;
+      }
+    }
+    return result;
+  }
+  escapeRegExp(str) {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+  partToRegExp(part) {
+    const patterns = [];
+    for (const name2 of part.names) {
+      _UriTemplate.validateLength(name2, MAX_VARIABLE_LENGTH, "Variable name");
+    }
+    if (part.operator === "?" || part.operator === "&") {
+      for (let i = 0; i < part.names.length; i++) {
+        const name2 = part.names[i];
+        const prefix = i === 0 ? "\\" + part.operator : "&";
+        patterns.push({
+          pattern: prefix + this.escapeRegExp(name2) + "=([^&]+)",
+          name: name2
+        });
+      }
+      return patterns;
+    }
+    let pattern;
+    const name = part.name;
+    switch (part.operator) {
+      case "":
+        pattern = part.exploded ? "([^/,]+(?:,[^/,]+)*)" : "([^/,]+)";
+        break;
+      case "+":
+      case "#":
+        pattern = "(.+)";
+        break;
+      case ".":
+        pattern = "\\.([^/,]+)";
+        break;
+      case "/":
+        pattern = "/" + (part.exploded ? "([^/,]+(?:,[^/,]+)*)" : "([^/,]+)");
+        break;
+      default:
+        pattern = "([^/]+)";
+    }
+    patterns.push({ pattern, name });
+    return patterns;
+  }
+  match(uri) {
+    _UriTemplate.validateLength(uri, MAX_TEMPLATE_LENGTH, "URI");
+    let pattern = "^";
+    const names = [];
+    for (const part of this.parts) {
+      if (typeof part === "string") {
+        pattern += this.escapeRegExp(part);
+      } else {
+        const patterns = this.partToRegExp(part);
+        for (const { pattern: partPattern, name } of patterns) {
+          pattern += partPattern;
+          names.push({ name, exploded: part.exploded });
+        }
+      }
+    }
+    pattern += "$";
+    _UriTemplate.validateLength(pattern, MAX_REGEX_LENGTH, "Generated regex pattern");
+    const regex = new RegExp(pattern);
+    const match = uri.match(regex);
+    if (!match)
+      return null;
+    const result = {};
+    for (let i = 0; i < names.length; i++) {
+      const { name, exploded } = names[i];
+      const value = match[i + 1];
+      const cleanName = name.replace("*", "");
+      if (exploded && value.includes(",")) {
+        result[cleanName] = value.split(",");
+      } else {
+        result[cleanName] = value;
+      }
+    }
+    return result;
+  }
+};
+
 // node_modules/@modelcontextprotocol/sdk/dist/esm/shared/toolNameValidation.js
 var TOOL_NAME_REGEX = /^[A-Za-z0-9._-]{1,128}$/;
 function validateToolName(name) {
@@ -20819,6 +21041,30 @@ var McpServer = class {
     }
   }
 };
+var ResourceTemplate = class {
+  constructor(uriTemplate, _callbacks) {
+    this._callbacks = _callbacks;
+    this._uriTemplate = typeof uriTemplate === "string" ? new UriTemplate(uriTemplate) : uriTemplate;
+  }
+  /**
+   * Gets the URI template pattern.
+   */
+  get uriTemplate() {
+    return this._uriTemplate;
+  }
+  /**
+   * Gets the list callback, if one was provided.
+   */
+  get listCallback() {
+    return this._callbacks.list;
+  }
+  /**
+   * Gets the callback for completing a specific URI template variable, if one was provided.
+   */
+  completeCallback(variable) {
+    return this._callbacks.complete?.[variable];
+  }
+};
 var EMPTY_OBJECT_JSON_SCHEMA = {
   type: "object",
   properties: {}
@@ -21332,6 +21578,12 @@ function readBridgeStatus(statusPath) {
       } catch {
       }
     }
+    if (typeof raw.searchResults === "string" && raw.searchResults) {
+      try {
+        raw.searchResults = JSON.parse(raw.searchResults);
+      } catch {
+      }
+    }
     return raw;
   } catch {
     return null;
@@ -21432,6 +21684,7 @@ function defaultTimeout(action) {
 }
 function reasonForAction(action) {
   if (action === "bootstrap_handshake") return "bridge bootstrap handshake";
+  if (action === "search_assets") return "unity_search_assets MCP resource";
   return `unity_${action} MCP tool`;
 }
 async function sendBridgeRequest(projectPath, action, opts) {
@@ -22370,6 +22623,25 @@ function formatTestList(tests, totalCount, matchedCount, filters) {
   return lines.join("\n");
 }
 
+// src/core/search.ts
+var noopLogger6 = { log() {
+}, error() {
+} };
+var DEFAULT_LIMIT = 100;
+var MAX_LIMIT = 500;
+async function searchAssets(opts) {
+  const logger = opts.logger ?? noopLogger6;
+  const limit = Math.min(Math.max(1, opts.limit ?? DEFAULT_LIMIT), MAX_LIMIT);
+  const payload = { query: opts.query, limit };
+  const result = await sendBridgeRequest(opts.projectPath, "search_assets", { payload });
+  if (!result.ok) {
+    return { ok: false, error: result.message };
+  }
+  const { status } = result;
+  logger.log("search_assets request completed");
+  return { ok: true, results: status.searchResults ?? [] };
+}
+
 // src/mcp/server.ts
 import { fileURLToPath as fileURLToPath3 } from "node:url";
 import nodePath from "node:path";
@@ -22503,6 +22775,145 @@ ${errorText}` }],
       });
       return {
         content: [{ type: "text", text: result.formatted }]
+      };
+    }
+  );
+  const SEARCH_SYNTAX_CONTENT = `# Unity Asset Search Syntax Reference
+
+## Filter Tokens
+
+| Token | Description | Example |
+|-------|-------------|---------|
+| \`t:\` / \`t=\` | Type (partial/exact) | \`t:prefab\`, \`t=Texture2D\` |
+| \`l:\` / \`l=\` | Label (partial/exact) | \`l:arch\`, \`l=Wall\` |
+| \`ref:\` | References asset | \`ref:Crystal\`, \`ref="Assets/Prefabs/Crystal.prefab"\` |
+| \`ext:\` | File extension | \`ext:png\`, \`ext:cs\` |
+| \`dir:\` | Directory scope | \`dir:Assets/Prefabs\` |
+| \`name:\` | File name | \`name:laser\` |
+| \`size\` | File size (bytes) | \`size>4096\`, \`size<=1024\` |
+| \`age\` | Days since modified | \`age<3\`, \`age>30\` |
+| \`a:\` | Area | \`a:assets\`, \`a:packages\`, \`a:all\` |
+| \`prefab:\` | Prefab type | \`prefab:root\`, \`prefab:variant\`, \`prefab:model\`, \`prefab:modified\` |
+| \`is:\` | State filter | \`is:subasset\` |
+| \`missing:\` | Missing refs | \`missing:scripts\` |
+
+## Comparison Operators
+
+| Operator | Meaning | Example |
+|----------|---------|---------|
+| \`:\` | Contains/partial | \`t:texture\` |
+| \`=\` | Exact match | \`t=Texture2D\` |
+| \`!=\` | Not equal | \`filtermode!=0\` |
+| \`>\` | Greater than | \`size>4096\` |
+| \`<\` | Less than | \`age<3\` |
+| \`>=\` | Greater or equal | \`width>=4096\` |
+| \`<=\` | Less or equal | \`bounciness<=0.5\` |
+
+## Boolean Logic
+
+| Syntax | Meaning | Example |
+|--------|---------|---------|
+| space | AND (implicit) | \`t:texture volume\` |
+| \`or\` | OR | \`player or monster\` |
+| \`-\` | Exclude | \`-t:scene\` |
+| \`()\` | Grouping | \`t:prefab (enemy or ally)\` |
+| \`!\` | Exact name match | \`!stone\` |
+
+## Indexed Property Queries
+
+When the project search index is built, serialized properties can be queried directly:
+- Numeric: \`health=2\`, \`bounciness>0.1\`
+- Boolean: \`generatePath=true\`
+- String: \`trait:indestru\` (partial), \`trait="tough but fair"\` (exact)
+- Color (hex): \`color:ADA\`, \`color=ADADAD\`
+- Vector component: \`bounds.x>1\`, \`acceleration.z=2\`
+- Object ref: \`sprite:CharacterBody\`
+- Null check: \`property=none\`
+
+## Query Flags
+
+| Flag | Effect |
+|------|--------|
+| \`+noResultsLimit\` | Return all results (default cap ~2999) |
+| \`+fuzzy\` | Fuzzy/approximate matching |
+
+## Examples
+
+- All prefabs: \`t:prefab\`
+- Prefabs with "enemy" in name: \`t:prefab enemy\`
+- Large textures: \`t:texture size>1048576\`
+- Recently modified scripts: \`ext:cs age<7\`
+- Prefab variants: \`prefab:variant\`
+- Materials in specific folder: \`t:material dir:Assets/Art/Materials\`
+- Assets referencing a specific prefab: \`ref="Assets/Prefabs/Player.prefab"\``;
+  server.registerResource(
+    "unity_asset_search_syntax",
+    "unity://assets/search-syntax",
+    {
+      description: "Full Unity asset search query syntax reference \u2014 filter tokens, operators, boolean logic, property queries, and examples.",
+      mimeType: "text/markdown"
+    },
+    async () => ({
+      contents: [{
+        uri: "unity://assets/search-syntax",
+        mimeType: "text/markdown",
+        text: SEARCH_SYNTAX_CONTENT
+      }]
+    })
+  );
+  const searchTemplate = new ResourceTemplate("unity://assets/search/{query}", { list: void 0 });
+  server.registerResource(
+    "unity_asset_search",
+    searchTemplate,
+    {
+      description: `Search Unity project assets. Returns JSON array of {id, label, score}.
+Common query syntax:
+  - By name: "enemy", "player*"
+  - By type: "t:prefab", "t:material", "t:texture", "t:scene"
+  - By label: "l:mylabel"
+  - By extension: "ext:png", "ext:cs"
+  - By directory: "dir:Assets/Prefabs"
+  - Combined: "t:prefab enemy" (AND), "player or monster" (OR)
+  - Exclude: "-t:scene" (NOT)
+  - Prefab variants: "prefab:variant", "prefab:model"
+Read unity://assets/search-syntax for full syntax reference.`,
+      mimeType: "application/json"
+    },
+    async (uri, variables) => {
+      const query = decodeURIComponent(String(variables.query ?? ""));
+      if (!query) {
+        return {
+          contents: [{
+            uri: uri.href,
+            mimeType: "application/json",
+            text: "[]"
+          }]
+        };
+      }
+      const limitParam = uri.searchParams.get("limit");
+      const limit = limitParam ? parseInt(limitParam, 10) : void 0;
+      const projectPath = process.cwd();
+      const result = await searchAssets({
+        projectPath,
+        query,
+        limit: Number.isFinite(limit) ? limit : void 0,
+        logger: stderrLogger
+      });
+      if (!result.ok) {
+        return {
+          contents: [{
+            uri: uri.href,
+            mimeType: "text/plain",
+            text: `Search failed: ${result.error}`
+          }]
+        };
+      }
+      return {
+        contents: [{
+          uri: uri.href,
+          mimeType: "application/json",
+          text: JSON.stringify(result.results)
+        }]
       };
     }
   );
