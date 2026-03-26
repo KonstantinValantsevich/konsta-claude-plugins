@@ -17,6 +17,7 @@ export interface McpTestClient {
     name: string,
     args?: Record<string, unknown>,
   ) => Promise<string>;
+  readResource: (uri: string) => Promise<string>;
   close: () => Promise<void>;
 }
 
@@ -31,6 +32,7 @@ export async function createMcpClient(
     command: "node",
     args: [SERVER_PATH],
     stderr: "pipe",
+    cwd: defaultProjectPath,
   });
 
   const client = new Client(
@@ -70,9 +72,26 @@ export async function createMcpClient(
     return text;
   }
 
+  async function readResource(uri: string): Promise<string> {
+    console.log(`[E2E] readResource: ${uri}`);
+    const result = await client.readResource(
+      { uri },
+      undefined,
+      { timeout: 300_000 },
+    );
+
+    const content = result.contents as Array<{ uri: string; text?: string }>;
+    const text = content
+      .filter((c) => typeof c.text === "string")
+      .map((c) => c.text)
+      .join("\n");
+    console.log(`[E2E] resource ${uri} → ${text.slice(0, 200)}`);
+    return text;
+  }
+
   async function close(): Promise<void> {
     await client.close();
   }
 
-  return { client, callTool, close };
+  return { client, callTool, readResource, close };
 }
