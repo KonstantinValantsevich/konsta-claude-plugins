@@ -13,7 +13,7 @@ import {
   unityIsRunning,
 } from "../compile/applescript.js";
 import { ensureBridgeInstalled, ensureGitExclude } from "./install.js";
-import type { BridgeAction, BridgeRequest, BridgeResult } from "./types.js";
+import type { BridgeAction, BridgeRequest, BridgeResult, SearchPayload } from "./types.js";
 import type { TestDiscoveryFilters } from "./types.js";
 import {
   bridgeReadyMatchesProject,
@@ -32,6 +32,7 @@ function defaultTimeout(action: BridgeAction | "bootstrap_handshake"): number {
 /** Reason string for request metadata. */
 function reasonForAction(action: BridgeAction | "bootstrap_handshake"): string {
   if (action === "bootstrap_handshake") return "bridge bootstrap handshake";
+  if (action === "search_assets") return "unity_search_assets MCP resource";
   return `unity_${action} MCP tool`;
 }
 
@@ -43,7 +44,7 @@ export async function sendBridgeRequest(
   projectPath: string,
   action: BridgeAction,
   opts?: {
-    payload?: TestDiscoveryFilters;
+    payload?: TestDiscoveryFilters | SearchPayload;
     timeoutMs?: number;
   },
 ): Promise<BridgeResult> {
@@ -87,7 +88,7 @@ async function sendRawRequest(
   projectPath: string,
   paths: ReturnType<typeof bridgePaths>,
   action: BridgeAction | "bootstrap_handshake",
-  opts?: { payload?: TestDiscoveryFilters; timeoutMs?: number },
+  opts?: { payload?: TestDiscoveryFilters | SearchPayload; timeoutMs?: number },
 ): Promise<BridgeResult> {
   const timeoutMs = opts?.timeoutMs ?? defaultTimeout(action);
   const requestId = generateRequestId();
