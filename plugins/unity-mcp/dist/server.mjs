@@ -22640,6 +22640,9 @@ async function searchAssets(opts) {
   }
   const { status } = result;
   logger.log("search_assets request completed");
+  if (!status.isSuccess) {
+    return { ok: false, error: status.summary || "Search failed" };
+  }
   return { ok: true, results: status.searchResults ?? [] };
 }
 
