@@ -3,10 +3,10 @@ export interface BridgeRequest {
   requestId: string;
   requestedAtUnixMs: number;
   projectPath: string;
-  action: "recompile" | "bootstrap_handshake" | "run_tests" | "list_tests";
+  action: BridgeAction | "bootstrap_handshake";
   reason: string;
   source: string;
-  payload?: TestDiscoveryFilters;
+  payload?: TestDiscoveryFilters | SearchPayload;
 }
 
 /** Filters for test discovery/execution — only flow into bridge requests */
@@ -20,6 +20,19 @@ export interface TestDiscoveryFilters {
 export interface TestResultFilters {
   statusFilter?: "passed" | "failed" | "skipped";
   nameFilter?: string;
+}
+
+/** Payload for the search_assets bridge action */
+export interface SearchPayload {
+  query: string;
+  limit: number;
+}
+
+/** A single search result entry returned by the search_assets action */
+export interface SearchResultEntry {
+  id: string;
+  label: string;
+  score: number;
 }
 
 export interface CompileError {
@@ -68,6 +81,7 @@ export interface BridgeStatus {
   summary: string;
   testResults?: TestResults;
   testList?: TestListResult;
+  searchResults?: SearchResultEntry[];
 }
 
 export interface TestResults {
@@ -106,7 +120,7 @@ export interface CompileResult {
 // --- Bridge-Aware IPC Layer types ---
 
 /** Actions that tools may request via sendBridgeRequest. */
-export type BridgeAction = "recompile" | "run_tests" | "list_tests";
+export type BridgeAction = "recompile" | "run_tests" | "list_tests" | "search_assets";
 
 /** Discriminated union returned by sendBridgeRequest. */
 export type BridgeResult =
