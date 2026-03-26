@@ -15,7 +15,8 @@ Add e2e test phase `06-search.test.ts` covering the MCP resource API surface for
 
 ## Prerequisites
 
-The MCP test client (`mcp-client.ts`) currently only supports `callTool`. A `readResource` helper must be added to support reading MCP resources in e2e tests.
+1. The MCP test client (`mcp-client.ts`) currently only supports `callTool`. A `readResource` helper must be added to support reading MCP resources in e2e tests.
+2. The MCP server resolves `projectPath` via `process.cwd()` for resource reads. The `StdioClientTransport` in `createMcpClient` must pass `cwd: defaultProjectPath` so the spawned server process runs in the Unity project directory.
 
 ## Changes
 
@@ -23,6 +24,12 @@ The MCP test client (`mcp-client.ts`) currently only supports `callTool`. A `rea
 
 **File:** `__tests__/e2e/helpers/mcp-client.ts`
 
+Two changes:
+
+**a) Pass `cwd` to `StdioClientTransport`:**
+Add `cwd: defaultProjectPath` to the transport options so the MCP server's `process.cwd()` resolves to the Unity project directory. This is required for resource handlers that use `process.cwd()` to find the project.
+
+**b) Add `readResource` method:**
 Add a `readResource` method to `McpTestClient` that wraps `client.readResource({ uri })` and extracts text content, mirroring the existing `callTool` pattern.
 
 ```typescript
@@ -57,7 +64,7 @@ Close MCP client.
 
 **Test 1: search-syntax resource returns documentation**
 - Read `unity://assets/search-syntax`
-- Assert response contains key syntax tokens: `t:`, `ref:`, `glob:`
+- Assert response contains key syntax tokens: `t:`, `ref:`, `ext:`
 
 **Test 2: basic type query returns results**
 - Read `unity://assets/search/t:MonoScript`
@@ -80,15 +87,16 @@ Close MCP client.
 - Parse JSON array
 - Assert array is empty
 
-**Test 6: invalid limit returns error**
+**Test 6: negative limit is clamped to 1**
 - Read `unity://assets/search/t:MonoScript?limit=-1`
-- Assert response contains an error message (not a JSON array)
+- Parse JSON array
+- Assert array length is at most 1 (limit is clamped via `Math.max(1, ...)` in `searchAssets`)
 
 ## File inventory
 
 | File | Action |
 |------|--------|
-| `__tests__/e2e/helpers/mcp-client.ts` | Edit — add `readResource` method |
+| `__tests__/e2e/helpers/mcp-client.ts` | Edit — add `cwd` to transport, add `readResource` method |
 | `__tests__/e2e/06-search.test.ts` | Create — new test phase |
 
 ## No other changes
