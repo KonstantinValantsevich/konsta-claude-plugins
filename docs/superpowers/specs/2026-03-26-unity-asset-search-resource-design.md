@@ -149,7 +149,7 @@ New template file installed alongside existing handlers at `Assets/Claude Bridge
 4. Execute search via `SearchService.Request()` with async callback
 5. On completion: sort results by `score`, take first `limit` items
 6. Map each `SearchItem` to `{ id: item.id, label: item.label ?? item.GetLabel(), score: item.score }`
-7. Serialize results array as JSON string — pass through existing `testResultsJson` parameter on `WriteStatus` (reusing the same wire field, see Bridge Protocol section)
+7. Serialize results array as JSON string — write via `WriteSearchStatus` helper which uses a dedicated `searchResults` field on `StatusPayload`
 8. Write terminal status `"completed"` via `WriteStatus`
 9. Call `FinalizeRequest(request)` to release the queue
 
@@ -175,7 +175,7 @@ Register two resources on the MCP server:
 2. Resolve `projectPath` (same auto-detection as existing tools)
 3. Send bridge request with action `"search_assets"` and payload `{ query, limit }`
 4. Wait for status via `waitForBridgeStatus()`
-5. Parse search results from the `testResults` wire field in the status file (action-aware parsing)
+5. Parse search results from the dedicated `searchResults` field in the status file
 6. Return as `application/json` content
 
 ### Bridge Protocol
@@ -186,10 +186,10 @@ Reuses existing file-based IPC. New additions:
 - `action: "search_assets"`
 - `payload: '{"query":"t:prefab enemy","limit":100}'`
 
-**Status file** — reuses the existing `testResults` wire field for search results JSON:
-- `testResults: '[{"id":"Assets/...","label":"...","score":0},...]'` (JSON string)
+**Status file** — uses a dedicated `searchResults` wire field (not reusing `testResults`):
+- `searchResults: '[{"id":"Assets/...","label":"...","score":0},...]'` (JSON string)
 
-This reuses the existing `testResultsJson` parameter on `WriteStatus` rather than adding a new field. The TypeScript side distinguishes the content by checking the original action type — when action is `"search_assets"`, the `testResults` field is parsed as `SearchResult[]` instead of `TestResults`.
+A new `searchResults` field is added to the C# `StatusPayload` class and a `WriteSearchStatus` helper method is added to `ClaudeBridgeBase`. The TypeScript side parses `searchResults` as a separate field in `readBridgeStatus`.
 
 **Terminal state:** Reuses `"completed"` — no new terminal state needed. The existing `TERMINAL_STATES` set already includes it.
 
