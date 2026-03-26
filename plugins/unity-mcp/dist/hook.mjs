@@ -42,7 +42,8 @@ var BRIDGE_EDITOR_DIR = "Assets/Claude Bridge/Editor";
 var BRIDGE_CS_FILES = [
   "ClaudeBridgeBase.cs",
   "ClaudeRecompileHandler.cs",
-  "ClaudeTestHandler.cs"
+  "ClaudeTestHandler.cs",
+  "ClaudeSearchHandler.cs"
 ];
 var BRIDGE_IPC_DIRNAME = "Library/ClaudeHookIPC";
 var BRIDGE_READY_FILENAME = "bridge-ready.json";
@@ -370,6 +371,12 @@ function readBridgeStatus(statusPath) {
       } catch {
       }
     }
+    if (typeof raw.searchResults === "string" && raw.searchResults) {
+      try {
+        raw.searchResults = JSON.parse(raw.searchResults);
+      } catch {
+      }
+    }
     return raw;
   } catch {
     return null;
@@ -470,6 +477,7 @@ function defaultTimeout(action) {
 }
 function reasonForAction(action) {
   if (action === "bootstrap_handshake") return "bridge bootstrap handshake";
+  if (action === "search_assets") return "unity_search_assets MCP resource";
   return `unity_${action} MCP tool`;
 }
 async function sendBridgeRequest(projectPath, action, opts) {

@@ -21250,7 +21250,8 @@ var BRIDGE_EDITOR_DIR = "Assets/Claude Bridge/Editor";
 var BRIDGE_CS_FILES = [
   "ClaudeBridgeBase.cs",
   "ClaudeRecompileHandler.cs",
-  "ClaudeTestHandler.cs"
+  "ClaudeTestHandler.cs",
+  "ClaudeSearchHandler.cs"
 ];
 var BRIDGE_IPC_DIRNAME = "Library/ClaudeHookIPC";
 var BRIDGE_READY_FILENAME = "bridge-ready.json";
