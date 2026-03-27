@@ -19,7 +19,6 @@ export function _setStateFilePathForTest(p: string): void {
   stateFilePath = p;
 }
 
-export { stateFilePath as STATE_FILE_PATH };
 
 export function readState(): WorktreeState {
   let state: WorktreeState;

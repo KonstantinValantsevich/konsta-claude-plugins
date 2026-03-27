@@ -72,7 +72,7 @@ describe("worktree-state", () => {
     expect(state["new-sess"]).toBeDefined();
   });
 
-  it("handles concurrent sessions without overwriting", () => {
+  it("registers multiple sessions independently", () => {
     registerWorktree("sess-a", "/worktree-a");
     registerWorktree("sess-b", "/worktree-b");
     const state = readState();
