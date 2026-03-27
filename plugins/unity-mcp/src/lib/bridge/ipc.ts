@@ -61,6 +61,14 @@ export function readBridgeStatus(statusPath: string): BridgeStatus | null {
         // Leave as-is if parsing fails
       }
     }
+    // Parse logsResponse — dedicated wire field from ClaudeLogHandler
+    if (typeof raw.logsResponse === "string" && raw.logsResponse) {
+      try {
+        raw.logsResponse = JSON.parse(raw.logsResponse as string);
+      } catch {
+        // Leave as-is if parsing fails
+      }
+    }
     return raw as unknown as BridgeStatus;
   } catch {
     return null;
