@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { fileURLToPath } from "node:url";
 import { detectProject } from "../core/detect.js";
 import { recompile } from "../core/recompile.js";
 import { lint } from "../core/lint.js";
@@ -105,11 +106,7 @@ async function main(): Promise<void> {
   }
 }
 
-// Only run main when executed directly (not when imported in tests)
-const isMain =
-  typeof process !== "undefined" &&
-  process.argv[1] != null &&
-  (process.argv[1].endsWith("/index.js") || process.argv[1].endsWith("/index.ts"));
+const isMain = process.argv[1] === fileURLToPath(import.meta.url);
 
 if (isMain) {
   main().catch((err) => {
