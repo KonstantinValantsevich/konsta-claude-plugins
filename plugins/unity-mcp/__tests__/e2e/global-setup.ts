@@ -14,8 +14,12 @@ import { writeState, readState, cleanupState } from "./helpers/state.js";
 const PLUGIN_ROOT = path.resolve(import.meta.dirname, "..", "..");
 const PROJECT_DIR = path.join(PLUGIN_ROOT, "e2e-project");
 
+/** When true, teardown is skipped — Unity stays running for fast re-runs. */
+const keepProject = process.env.E2E_KEEP_PROJECT === "1";
+
 /** Synchronous cleanup — safe to call from signal handlers and process.on('exit'). */
 function emergencyCleanup(): void {
+  if (keepProject) return;
   try {
     const state = readState();
     if (state.projectPath) {
@@ -38,7 +42,41 @@ process.on("uncaughtException", (err) => {
   process.exit(1);
 });
 
+/** Check if an existing e2e session can be reused. */
+function canReuseSession(): boolean {
+  try {
+    const state = readState();
+    if (!state.projectPath || !fs.existsSync(state.projectPath)) return false;
+    // Check project has Assets/ dir (sanity check)
+    if (!fs.existsSync(path.join(state.projectPath, "Assets"))) return false;
+    // Check git baseline tag exists
+    try {
+      execSync("git tag -l e2e-baseline", { cwd: state.projectPath, encoding: "utf-8", timeout: 5_000 });
+      return true;
+    } catch {
+      return false;
+    }
+  } catch {
+    return false;
+  }
+}
+
 export default async function globalSetup(): Promise<() => Promise<void>> {
+  // Reuse existing session if project + state are intact
+  if (canReuseSession()) {
+    const state = readState();
+    console.log(`[E2E] Reusing existing session (project: ${state.projectPath})`);
+    console.log(`[E2E] Unity version: ${state.unityVersion}, jb: ${state.jbAvailable}`);
+
+    return async () => {
+      if (keepProject) {
+        console.log("[E2E] E2E_KEEP_PROJECT=1 — skipping teardown");
+        return;
+      }
+      await teardown();
+    };
+  }
+
   console.log("[E2E] Starting global setup...");
 
   // 1. Find Unity
@@ -79,14 +117,14 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     "/[Uu]serSettings/",
   ].join("\n") + "\n");
 
-  // 6. Init git + tag baseline
+  // 7. Init git + tag baseline
   execSync("git init", { cwd: PROJECT_DIR, stdio: "ignore" });
   execSync("git add -A", { cwd: PROJECT_DIR, stdio: "ignore" });
   execSync('git commit -m "initial"', { cwd: PROJECT_DIR, stdio: "ignore" });
   execSync("git tag e2e-baseline", { cwd: PROJECT_DIR, stdio: "ignore" });
   console.log("[E2E] Git initialized with e2e-baseline tag");
 
-  // 7. Write shared state
+  // 8. Write shared state
   writeState({
     projectPath: PROJECT_DIR,
     unityVersion: version,
@@ -97,21 +135,29 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
 
   // Return teardown function
   return async () => {
-    console.log("[E2E] Starting global teardown...");
-    try {
-      const state = readState();
-      if (state.projectPath) {
-        console.log("[E2E] Closing Unity if running...");
-        closeUnityForProject(state.projectPath);
-        console.log("[E2E] Unity closed");
-        console.log(`[E2E] Deleting project: ${state.projectPath}`);
-        fs.rmSync(state.projectPath, { recursive: true, force: true });
-        console.log("[E2E] Project deleted");
-      }
-      cleanupState();
-    } catch {
-      console.log("[E2E] No state file found, nothing to tear down");
+    if (keepProject) {
+      console.log("[E2E] E2E_KEEP_PROJECT=1 — skipping teardown");
+      return;
     }
-    console.log("[E2E] Global teardown complete");
+    await teardown();
   };
+}
+
+async function teardown(): Promise<void> {
+  console.log("[E2E] Starting global teardown...");
+  try {
+    const state = readState();
+    if (state.projectPath) {
+      console.log("[E2E] Closing Unity if running...");
+      closeUnityForProject(state.projectPath);
+      console.log("[E2E] Unity closed");
+      console.log(`[E2E] Deleting project: ${state.projectPath}`);
+      fs.rmSync(state.projectPath, { recursive: true, force: true });
+      console.log("[E2E] Project deleted");
+    }
+    cleanupState();
+  } catch {
+    console.log("[E2E] No state file found, nothing to tear down");
+  }
+  console.log("[E2E] Global teardown complete");
 }

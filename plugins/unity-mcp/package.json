@@ -7,7 +7,9 @@
     "build": "esbuild src/mcp/server.ts --bundle --platform=node --format=esm --outfile=dist/server.mjs && esbuild src/hook/index.ts --bundle --platform=node --format=esm --outfile=dist/hook.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "vitest run --config vitest.e2e.config.ts"
+    "test:e2e": "vitest run --config vitest.e2e.config.ts",
+    "test:e2e:keep": "E2E_KEEP_PROJECT=1 vitest run --config vitest.e2e.config.ts",
+    "test:e2e:only": "E2E_KEEP_PROJECT=1 vitest run --config vitest.e2e.config.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
