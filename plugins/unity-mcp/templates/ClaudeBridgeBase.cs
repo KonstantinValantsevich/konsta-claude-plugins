@@ -1,4 +1,4 @@
-// ClaudeBridgeBase Version: 4
+// ClaudeBridgeBase Version: 5
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -10,7 +10,7 @@ using UnityEngine;
 internal static class ClaudeBridgeBase
 {
     private const int ProtocolVersion = 1;
-    private const string BridgeVersion = "4";
+    private const string BridgeVersion = "5";
     private const string RequestFilePrefix = "request-";
     private const string StatusFilePrefix = "status-";
     private const string ReadyFileName = "bridge-ready.json";
@@ -56,6 +56,7 @@ internal static class ClaudeBridgeBase
         public string summary;
         public string testResults;
         public string searchResults;
+        public string logsResponse;
     }
 
     [Serializable]
@@ -95,6 +96,8 @@ internal static class ClaudeBridgeBase
             ClaudeRecompileHandler.Register();
             ClaudeTestHandler.Register();
             ClaudeSearchHandler.Register();
+            ClaudeLogCollector.Initialize();
+            ClaudeLogHandler.Register();
 
             StartWatcher();
             WriteReady();
@@ -174,6 +177,32 @@ internal static class ClaudeBridgeBase
             errors = new List<ErrorPayload>(),
             summary = summary ?? string.Empty,
             searchResults = searchResultsJson,
+        };
+
+        string json = JsonUtility.ToJson(payload, true);
+        string path = Path.Combine(IpcDir, "status-" + request.requestId + ".json");
+        TryWriteJsonAtomic(path, json);
+    }
+
+    internal static void WriteLogsStatus(RequestPayload request, string state, bool isSuccess, string summary, string logsResponseJson)
+    {
+        if (request == null || string.IsNullOrEmpty(request.requestId))
+            return;
+
+        var payload = new StatusPayload
+        {
+            protocolVersion = ProtocolVersion,
+            requestId = request.requestId,
+            bridgeVersion = BridgeVersion,
+            projectPath = ProjectPath,
+            state = state,
+            createdAtUnixMs = NowUnixMs(),
+            updatedAtUnixMs = NowUnixMs(),
+            didCompile = false,
+            isSuccess = isSuccess,
+            errors = new List<ErrorPayload>(),
+            summary = summary ?? string.Empty,
+            logsResponse = logsResponseJson,
         };
 
         string json = JsonUtility.ToJson(payload, true);
