@@ -10,6 +10,8 @@ export const POLL_INTERVAL_MS = 500;
 export const BRIDGE_READY_TIMEOUT_MS = 120_000;
 export const BRIDGE_STATUS_TIMEOUT_MS = 120_000;
 export const TEST_STATUS_TIMEOUT_MS = 300_000;
+export const UNITY_LAUNCH_TIMEOUT_MS = 30_000;
+export const BRIDGE_READY_LAUNCH_TIMEOUT_MS = 300_000;
 
 // Paths
 export const CACHE_DIR = path.join(os.homedir(), ".claude", "cache", "unity-recompile");
