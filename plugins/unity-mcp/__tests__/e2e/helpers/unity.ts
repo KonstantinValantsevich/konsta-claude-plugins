@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { execSync, execFileSync, spawn } from "node:child_process";
+import { execSync, execFileSync } from "node:child_process";
 
 const UNITY_HUB_EDITOR_DIR = "/Applications/Unity/Hub/Editor";
 const EDITOR_LOG_PATH = path.join(
@@ -48,42 +48,6 @@ export function createUnityProject(
     timeout: 300_000,
     stdio: "ignore",
   });
-}
-
-/**
- * Open Unity Editor in non-batch mode by launching the binary directly.
- * Spawns detached so it doesn't block, and the process is immediately visible in `ps aux`.
- */
-export function openUnityEditor(binaryPath: string, projectDir: string): void {
-  const child = spawn(binaryPath, ["-projectPath", projectDir], {
-    detached: true,
-    stdio: "ignore",
-  });
-  child.unref();
-}
-
-/**
- * Poll `ps aux` until a Unity process for the project path appears.
- * Returns the PID, or throws on timeout.
- */
-export async function waitForUnityProcess(
-  projectDir: string,
-  timeoutMs: number = 120_000,
-): Promise<number> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    try {
-      const output = execSync(
-        `ps aux | grep '[U]nity' | grep "${projectDir}" | grep -v batchMode | awk '{print $2}' | head -1`,
-        { encoding: "utf-8", timeout: 5_000 },
-      ).trim();
-      if (output) return parseInt(output, 10);
-    } catch {
-      // not found yet
-    }
-    await new Promise((r) => setTimeout(r, 2_000));
-  }
-  throw new Error("Timed out waiting for Unity process");
 }
 
 /**
@@ -153,6 +117,28 @@ export function closeUnity(pid: number): void {
     } catch {
       return; // process is gone
     }
+  }
+}
+
+/**
+ * Find and close Unity for a project path. No-op if Unity isn't running.
+ * Uses ps-based detection (same as production findUnityPid).
+ */
+export function closeUnityForProject(projectDir: string): void {
+  try {
+    const output = execSync(
+      `ps aux | grep '[U]nity' | grep "${projectDir}" | grep -v batchMode | awk '{print $2}' | head -1`,
+      { encoding: "utf-8", timeout: 5_000 },
+    ).trim();
+    if (output) {
+      const pid = parseInt(output, 10);
+      console.log(`[E2E] Found Unity PID ${pid} for project, closing...`);
+      closeUnity(pid);
+    } else {
+      console.log("[E2E] No Unity process found for project");
+    }
+  } catch {
+    // Not found — nothing to close
   }
 }
 
