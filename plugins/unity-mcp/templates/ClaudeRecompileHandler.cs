@@ -1,4 +1,4 @@
-// ClaudeRecompileHandler Version: 4
+// ClaudeRecompileHandler Version: 5
 using System;
 using System.Collections.Generic;
 using UnityEditor;
@@ -17,6 +17,7 @@ internal static class ClaudeRecompileHandler
         public bool CompilationStarted;
         public bool Finalized;
         public readonly List<ClaudeBridgeBase.ErrorPayload> Errors = new List<ClaudeBridgeBase.ErrorPayload>();
+        public readonly List<string> LogErrors = new List<string>();
     }
 
     private static ActiveRecompile _active;
@@ -50,6 +51,9 @@ internal static class ClaudeRecompileHandler
         ClaudeBridgeBase.WriteStatus(request, "queued", false, true, "Request accepted", _active.Errors);
         ClaudeBridgeBase.WriteStatus(request, "refresh_requested", false, true, "AssetDatabase.Refresh requested", _active.Errors);
 
+        Application.logMessageReceived -= OnLogMessageReceived;
+        Application.logMessageReceived += OnLogMessageReceived;
+
         try { AssetDatabase.Refresh(); }
         catch (Exception ex) { Finalize(false, false, "AssetDatabase.Refresh failed: " + ex.Message); }
     }
@@ -62,7 +66,18 @@ internal static class ClaudeRecompileHandler
         if ((EditorApplication.timeSinceStartup - _active.RefreshRequestedAtEditorTime) < NoCompileStartTimeoutSeconds) return;
         if (EditorApplication.isCompiling || EditorApplication.isUpdating) return;
 
-        Finalize(false, true, "No compilation started after refresh");
+        PromoteLogErrors();
+        bool hasErrors = _active.Errors.Count > 0;
+        Finalize(false, !hasErrors, hasErrors ? "Compilation blocked by errors" : "No compilation started after refresh");
+    }
+
+    private static void OnLogMessageReceived(string condition, string stackTrace, LogType type)
+    {
+        if (_active == null || _active.Finalized) return;
+        if (type != LogType.Error && type != LogType.Exception) return;
+        // Ignore our own bridge logs
+        if (condition != null && condition.StartsWith("[ClaudeBridge]")) return;
+        _active.LogErrors.Add(condition ?? string.Empty);
     }
 
     private static void OnCompilationStarted(object context)
@@ -107,13 +122,35 @@ internal static class ClaudeRecompileHandler
         if (_active == null || _active.Finalized) return;
         if (!_active.CompilationStarted) _active.CompilationStarted = true;
 
-        ClaudeBridgeBase.WriteStatus(_active.Request, "compilation_finished", true, _active.Errors.Count == 0, "Compilation finished", _active.Errors);
-        Finalize(true, _active.Errors.Count == 0, _active.Errors.Count == 0 ? "Compilation succeeded" : "Compilation failed");
+        PromoteLogErrors();
+        bool success = _active.Errors.Count == 0;
+        ClaudeBridgeBase.WriteStatus(_active.Request, "compilation_finished", true, success, "Compilation finished", _active.Errors);
+        Finalize(true, success, success ? "Compilation succeeded" : "Compilation failed");
+    }
+
+    private static void PromoteLogErrors()
+    {
+        if (_active == null) return;
+        // Only promote log errors if no compiler errors were captured (avoids duplicates)
+        if (_active.Errors.Count > 0 || _active.LogErrors.Count == 0) return;
+        for (int i = 0; i < _active.LogErrors.Count; i++)
+        {
+            _active.Errors.Add(new ClaudeBridgeBase.ErrorPayload
+            {
+                assembly = string.Empty,
+                file = string.Empty,
+                line = 0,
+                column = 0,
+                message = _active.LogErrors[i],
+                type = "Error",
+            });
+        }
     }
 
     private static void Finalize(bool didCompile, bool isSuccess, string summary)
     {
         if (_active == null || _active.Finalized) return;
+        Application.logMessageReceived -= OnLogMessageReceived;
         _active.Finalized = true;
         string finalState = isSuccess ? "completed" : "failed";
         if (!didCompile && isSuccess) finalState = "completed";
