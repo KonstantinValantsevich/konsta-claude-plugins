@@ -3,7 +3,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { unityIsRunning } from "../compile/applescript.js";
 import { log } from "../logger.js";
-import { UNITY_LAUNCH_TIMEOUT_MS, POLL_INTERVAL_MS } from "../config.js";
+import { UNITY_LAUNCH_TIMEOUT_MS, UNITY_BUILD_TARGET, POLL_INTERVAL_MS } from "../config.js";
 
 const UNITY_HUB_EDITOR_DIR = "/Applications/Unity/Hub/Editor";
 
@@ -66,7 +66,7 @@ export async function ensureUnityRunning(
     `Unity not running. Launching Unity ${version} (this may take a moment)...\n`,
   );
 
-  const child = spawn(binaryPath, ["-projectPath", projectPath], {
+  const child = spawn(binaryPath, ["-projectPath", projectPath, "-buildTarget", UNITY_BUILD_TARGET], {
     detached: true,
     stdio: "ignore",
   });

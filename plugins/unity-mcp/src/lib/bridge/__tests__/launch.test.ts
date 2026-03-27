@@ -113,7 +113,7 @@ describe("ensureUnityRunning", () => {
 
     expect(spawn).toHaveBeenCalledWith(
       "/Applications/Unity/Hub/Editor/2022.3.0f1/Unity.app/Contents/MacOS/Unity",
-      ["-projectPath", "/project"],
+      ["-projectPath", "/project", "-buildTarget", "iOS"],
       { detached: true, stdio: "ignore" },
     );
     expect(mockUnref).toHaveBeenCalled();

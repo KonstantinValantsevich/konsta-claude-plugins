@@ -20996,7 +20996,8 @@ var POLL_INTERVAL_MS = 500;
 var BRIDGE_READY_TIMEOUT_MS = 12e4;
 var BRIDGE_STATUS_TIMEOUT_MS = 12e4;
 var TEST_STATUS_TIMEOUT_MS = 3e5;
-var UNITY_LAUNCH_TIMEOUT_MS = 3e4;
+var UNITY_LAUNCH_TIMEOUT_MS = 6e4;
+var UNITY_BUILD_TARGET = "iOS";
 var BRIDGE_READY_LAUNCH_TIMEOUT_MS = 3e5;
 var CACHE_DIR = path.join(os.homedir(), ".claude", "cache", "unity-recompile");
 var MARKER_DIR = path.join(CACHE_DIR, "markers");
@@ -21277,7 +21278,7 @@ async function ensureUnityRunning(projectPath, launchTimeoutMs = UNITY_LAUNCH_TI
     `Unity not running. Launching Unity ${version2} (this may take a moment)...
 `
   );
-  const child = spawn(binaryPath, ["-projectPath", projectPath], {
+  const child = spawn(binaryPath, ["-projectPath", projectPath, "-buildTarget", UNITY_BUILD_TARGET], {
     detached: true,
     stdio: "ignore"
   });

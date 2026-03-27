@@ -9,7 +9,7 @@
     {
       "name": "unity-mcp",
       "description": "Unity Editor integration — recompilation, diagnostics, and linting via MCP",
-      "version": "1.5.2",
+      "version": "1.5.3",
       "author": {
         "name": "Konsta"
       },
