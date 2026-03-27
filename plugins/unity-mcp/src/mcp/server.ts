@@ -8,6 +8,8 @@ import { runTests } from "../core/test.js";
 import { getTestResults } from "../core/test-results.js";
 import { listTests } from "../core/list-tests.js";
 import { searchAssets } from "../core/search.js";
+import { getLogs } from "../core/logs.js";
+import { getConsole } from "../core/console.js";
 import type { Logger } from "../core/types.js";
 import { fileURLToPath } from "node:url";
 import nodePath from "node:path";
@@ -278,6 +280,53 @@ Read unity://assets/search-syntax resource for full syntax reference.`,
 
       return {
         content: [{ type: "text" as const, text: JSON.stringify(result.results) }],
+      };
+    },
+  );
+
+  server.tool(
+    "unity_logs",
+    "Pull Unity Console log entries incrementally using a cursor. First call without cursor subscribes from now (returns current cursor, zero entries). Subsequent calls with cursor return new entries since that cursor. Pass cursor 0 to get buffered history.",
+    {
+      projectPath: z.string().describe("Unity project root path"),
+      cursor: z.number().optional().describe("Resume from this cursor. Omit to subscribe from now. Pass 0 for history."),
+      limit: z.number().optional().describe("Max entries to return (1-100, default 100)"),
+      filter: z.enum(["Log", "Warning", "Error", "Exception"]).optional().describe("Filter by log type"),
+      search: z.string().optional().describe("Text search within message and stackTrace"),
+    },
+    async ({ projectPath, cursor, limit, filter, search }) => {
+      const result = await getLogs({ projectPath, cursor, limit, filter, search, logger: stderrLogger });
+      if (!result.ok) {
+        return {
+          content: [{ type: "text" as const, text: `Log retrieval failed: ${result.error}` }],
+          isError: true,
+        };
+      }
+      return {
+        content: [{ type: "text" as const, text: result.formatted }],
+      };
+    },
+  );
+
+  server.tool(
+    "unity_console",
+    "Snapshot of recent Unity Console entries — returns the most recent entries, mirroring what's currently visible in the Unity Console window.",
+    {
+      projectPath: z.string().describe("Unity project root path"),
+      limit: z.number().optional().describe("Max entries to return (1-100, default 100)"),
+      filter: z.enum(["Log", "Warning", "Error", "Exception"]).optional().describe("Filter by log type"),
+      search: z.string().optional().describe("Text search within message and stackTrace"),
+    },
+    async ({ projectPath, limit, filter, search }) => {
+      const result = await getConsole({ projectPath, limit, filter, search, logger: stderrLogger });
+      if (!result.ok) {
+        return {
+          content: [{ type: "text" as const, text: `Console retrieval failed: ${result.error}` }],
+          isError: true,
+        };
+      }
+      return {
+        content: [{ type: "text" as const, text: result.formatted }],
       };
     },
   );
