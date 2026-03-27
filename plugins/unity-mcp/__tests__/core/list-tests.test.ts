@@ -12,13 +12,13 @@ vi.mock("../../src/lib/bridge/ipc.js", () => ({
   readBridgeStatus: vi.fn(),
 }));
 
-vi.mock("../../src/lib/compile/applescript.js", () => ({
-  unityIsRunning: vi.fn(() => true),
+vi.mock("../../src/lib/bridge/launch.js", () => ({
+  ensureUnityRunning: vi.fn().mockResolvedValue(false),
 }));
 
 import { listTests } from "../../src/core/list-tests.js";
 import { waitForBridgeStatus } from "../../src/lib/bridge/ipc.js";
-import { unityIsRunning } from "../../src/lib/compile/applescript.js";
+import { ensureUnityRunning } from "../../src/lib/bridge/launch.js";
 import type { BridgeStatus } from "../../src/lib/bridge/types.js";
 
 describe("listTests", () => {
@@ -35,12 +35,13 @@ describe("listTests", () => {
     vi.restoreAllMocks();
   });
 
-  it("returns error when Unity is not running", async () => {
-    vi.mocked(unityIsRunning).mockReturnValue(false);
-    const result = await listTests({ projectPath: projectDir });
-    expect(result.formatted).toContain("Unity editor is not running");
-    expect(result.totalCount).toBe(0);
-    expect(result.matchedCount).toBe(0);
+  it("throws when Unity cannot be launched", async () => {
+    vi.mocked(ensureUnityRunning).mockRejectedValue(
+      new Error("unity_launch_failed: Unity process did not appear within 30s."),
+    );
+    await expect(
+      listTests({ projectPath: projectDir }),
+    ).rejects.toThrow("unity_launch_failed");
   });
 
   it("returns error on timeout", async () => {
@@ -65,7 +66,7 @@ describe("listTests", () => {
     } as BridgeStatus;
     vi.mocked(waitForBridgeStatus).mockResolvedValue(mockStatus);
     const result = await listTests({ projectPath: projectDir });
-    expect(result.formatted).toContain("Something broke");
+    expect(result.formatted).toContain("Bridge returned no test list.");
   });
 
   it("formats unfiltered test list grouped by assembly", async () => {

@@ -12,13 +12,13 @@ vi.mock("../../src/lib/bridge/ipc.js", () => ({
   readBridgeStatus: vi.fn(),
 }));
 
-vi.mock("../../src/lib/compile/applescript.js", () => ({
-  unityIsRunning: vi.fn(() => true),
+vi.mock("../../src/lib/bridge/launch.js", () => ({
+  ensureUnityRunning: vi.fn().mockResolvedValue(false),
 }));
 
 import { searchAssets } from "../../src/core/search.js";
 import { waitForBridgeStatus } from "../../src/lib/bridge/ipc.js";
-import { unityIsRunning } from "../../src/lib/compile/applescript.js";
+import { ensureUnityRunning } from "../../src/lib/bridge/launch.js";
 import type { BridgeStatus } from "../../src/lib/bridge/types.js";
 
 describe("searchAssets", () => {
@@ -35,13 +35,13 @@ describe("searchAssets", () => {
     vi.restoreAllMocks();
   });
 
-  it("returns error when Unity is not running", async () => {
-    vi.mocked(unityIsRunning).mockReturnValue(false);
-    const result = await searchAssets({ projectPath: projectDir, query: "t:prefab" });
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.error).toContain("Unity editor is not running");
-    }
+  it("throws when Unity cannot be launched", async () => {
+    vi.mocked(ensureUnityRunning).mockRejectedValue(
+      new Error("unity_launch_failed: Unity process did not appear within 30s."),
+    );
+    await expect(
+      searchAssets({ projectPath: projectDir, query: "t:prefab" }),
+    ).rejects.toThrow("unity_launch_failed");
   });
 
   it("returns error on timeout", async () => {

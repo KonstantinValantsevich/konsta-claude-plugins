@@ -34,6 +34,8 @@ var POLL_INTERVAL_MS = 500;
 var BRIDGE_READY_TIMEOUT_MS = 12e4;
 var BRIDGE_STATUS_TIMEOUT_MS = 12e4;
 var TEST_STATUS_TIMEOUT_MS = 3e5;
+var UNITY_LAUNCH_TIMEOUT_MS = 3e4;
+var BRIDGE_READY_LAUNCH_TIMEOUT_MS = 3e5;
 var CACHE_DIR = path2.join(os.homedir(), ".claude", "cache", "unity-recompile");
 var MARKER_DIR = path2.join(CACHE_DIR, "markers");
 var TEST_STORE_DIR = path2.join(CACHE_DIR, "test-runs");
@@ -204,6 +206,9 @@ function ensureGitExclude(projectPath) {
   }
 }
 
+// src/lib/bridge/request.ts
+import fs7 from "node:fs";
+
 // src/lib/compile/applescript.ts
 import { execSync as execSync3 } from "node:child_process";
 function findUnityPid(projectPath) {
@@ -265,16 +270,13 @@ function triggerEditorRefreshOnly(projectPath) {
   return true;
 }
 
-// src/lib/compile/cli-fallback.ts
-import { execSync as execSync4 } from "node:child_process";
+// src/lib/bridge/launch.ts
 import fs5 from "node:fs";
 import path6 from "node:path";
+import { spawn } from "node:child_process";
+var UNITY_HUB_EDITOR_DIR = "/Applications/Unity/Hub/Editor";
 function readUnityVersion(projectPath) {
-  const versionFile = path6.join(
-    projectPath,
-    "ProjectSettings",
-    "ProjectVersion.txt"
-  );
+  const versionFile = path6.join(projectPath, "ProjectSettings", "ProjectVersion.txt");
   try {
     const content = fs5.readFileSync(versionFile, "utf-8");
     const match = content.match(/m_EditorVersion:\s*(.+)/);
@@ -283,56 +285,53 @@ function readUnityVersion(projectPath) {
     return null;
   }
 }
-function runCliFallback(projectPath) {
+function resolveUnityBinary(version) {
+  const binaryPath = path6.join(
+    UNITY_HUB_EDITOR_DIR,
+    version,
+    "Unity.app",
+    "Contents/MacOS/Unity"
+  );
+  if (!fs5.existsSync(binaryPath)) {
+    throw new Error(
+      `unity_not_found: Unity ${version} not found at ${binaryPath}. Ensure it is installed via Unity Hub.`
+    );
+  }
+  return binaryPath;
+}
+async function ensureUnityRunning(projectPath, launchTimeoutMs = UNITY_LAUNCH_TIMEOUT_MS) {
+  if (unityIsRunning(projectPath)) {
+    return false;
+  }
   const version = readUnityVersion(projectPath);
   if (!version) {
-    return {
-      success: false,
-      didCompile: false,
-      errors: ["Could not detect Unity version from ProjectVersion.txt"]
-    };
-  }
-  const unityPath = `/Applications/Unity/Hub/Editor/${version}/Unity.app/Contents/MacOS/Unity`;
-  if (!fs5.existsSync(unityPath)) {
-    return {
-      success: false,
-      didCompile: false,
-      errors: [
-        `Unity not found at: ${unityPath}`,
-        `Please ensure Unity ${version} is installed via Unity Hub`
-      ]
-    };
-  }
-  process.stderr.write(
-    "Unity not running. Starting batch compilation (this may take a moment)...\n"
-  );
-  log("CLI fallback: starting batch compilation");
-  try {
-    const output = execSync4(
-      `"${unityPath}" -batchmode -projectPath "${projectPath}" -executeMethod UnityEditor.AssetDatabase.Refresh -logFile - -quit 2>&1 | grep "error CS" || true`,
-      { encoding: "utf-8", timeout: 3e5 }
-    ).trim();
-    const errors = output ? output.split("\n").filter(Boolean) : [];
-    log(
-      `CLI fallback: ${errors.length > 0 ? `${errors.length} errors` : "success"}`
+    throw new Error(
+      `Could not detect Unity version from ProjectVersion.txt in ${projectPath}`
     );
-    return {
-      success: errors.length === 0,
-      didCompile: true,
-      errors
-    };
-  } catch (err) {
-    log(`CLI fallback failed: ${err}`);
-    return {
-      success: false,
-      didCompile: false,
-      errors: [`Batch compilation failed: ${err}`]
-    };
   }
+  const binaryPath = resolveUnityBinary(version);
+  log(`Launching Unity ${version} for project: ${projectPath}`);
+  process.stderr.write(
+    `Unity not running. Launching Unity ${version} (this may take a moment)...
+`
+  );
+  const child = spawn(binaryPath, ["-projectPath", projectPath], {
+    detached: true,
+    stdio: "ignore"
+  });
+  child.unref();
+  const deadline = Date.now() + launchTimeoutMs;
+  while (Date.now() < deadline) {
+    if (unityIsRunning(projectPath)) {
+      log("Unity process detected after launch");
+      return true;
+    }
+    await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+  }
+  throw new Error(
+    `unity_launch_failed: Unity process did not appear within ${launchTimeoutMs / 1e3}s. Check Unity installation.`
+  );
 }
-
-// src/lib/bridge/request.ts
-import fs7 from "node:fs";
 
 // src/lib/bridge/ipc.ts
 import crypto2 from "node:crypto";
@@ -481,9 +480,7 @@ function reasonForAction(action) {
   return `unity_${action} MCP tool`;
 }
 async function sendBridgeRequest(projectPath, action, opts) {
-  if (!unityIsRunning(projectPath)) {
-    return { ok: false, error: "unity_not_running", message: "Unity editor is not running." };
-  }
+  const freshlyLaunched = await ensureUnityRunning(projectPath);
   const paths = bridgePaths(projectPath);
   ensureBridgeInstalled(projectPath);
   ensureGitExclude(projectPath);
@@ -491,7 +488,8 @@ async function sendBridgeRequest(projectPath, action, opts) {
   if (!bridgeReadyMatchesProject(paths.readyFile, projectPath)) {
     log("Bridge not ready, starting bootstrap flow");
     triggerEditorRefreshOnly(projectPath);
-    const ready = await waitForBridgeReady(paths.readyFile, projectPath, BRIDGE_READY_TIMEOUT_MS);
+    const bootstrapTimeout = freshlyLaunched ? BRIDGE_READY_LAUNCH_TIMEOUT_MS : BRIDGE_READY_TIMEOUT_MS;
+    const ready = await waitForBridgeReady(paths.readyFile, projectPath, bootstrapTimeout);
     if (!ready) {
       return { ok: false, error: "bridge_bootstrap_failed", message: "Bridge did not become ready after bootstrap refresh." };
     }
@@ -556,28 +554,18 @@ async function recompile(projectPath, logger2 = noopLogger) {
     return { success: true, skipped: true, errors: [] };
   }
   logger2.log(bridgeChangedThisRun ? "Bridge updated, triggering recompilation" : "C# files changed, triggering recompilation");
-  let compileErrors;
-  let success;
-  let didCompile;
-  if (unityIsRunning(projectPath)) {
-    const result = await sendBridgeRequest(projectPath, "recompile");
-    if (!result.ok) {
-      return {
-        success: false,
-        skipped: false,
-        errors: [{ assembly: "", file: "", line: 0, column: 0, message: result.message, type: "error" }]
-      };
-    }
-    const parsed = parseBridgeStatusToResult(result.status);
-    success = parsed.success;
-    didCompile = parsed.didCompile;
-    compileErrors = parsed.errors;
-  } else {
-    const cliResult = await runCliFallback(projectPath);
-    success = cliResult.success;
-    didCompile = cliResult.didCompile;
-    compileErrors = cliResult.errors;
+  const result = await sendBridgeRequest(projectPath, "recompile");
+  if (!result.ok) {
+    return {
+      success: false,
+      skipped: false,
+      errors: [{ assembly: "", file: "", line: 0, column: 0, message: result.message, type: "error" }]
+    };
   }
+  const parsed = parseBridgeStatusToResult(result.status);
+  const success = parsed.success;
+  const didCompile = parsed.didCompile;
+  const compileErrors = parsed.errors;
   if (success || didCompile) {
     touchMarker(markerPath);
     logger2.log("Marker file updated");
