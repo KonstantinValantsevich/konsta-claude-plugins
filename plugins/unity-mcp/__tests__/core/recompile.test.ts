@@ -6,16 +6,20 @@ import { recompile } from "../../src/core/recompile.js";
 import { BRIDGE_CS_FILES, BRIDGE_EDITOR_DIR, MARKER_DIR } from "../../src/lib/config.js";
 import { getMarkerPath, ensureMarker, touchMarker } from "../../src/lib/project/changes.js";
 
-// Mock compile dependencies so we don't need a real Unity instance
-vi.mock("../../src/lib/compile/applescript.js", () => ({
-  unityIsRunning: vi.fn().mockReturnValue(false),
-}));
-
-vi.mock("../../src/lib/compile/cli-fallback.js", () => ({
-  runCliFallback: vi.fn().mockResolvedValue({
-    success: true,
-    didCompile: true,
-    errors: [],
+vi.mock("../../src/lib/bridge/request.js", () => ({
+  sendBridgeRequest: vi.fn().mockResolvedValue({
+    ok: true,
+    status: {
+      protocolVersion: 1,
+      bridgeVersion: "4",
+      requestId: "test-001",
+      projectPath: "/project",
+      state: "completed",
+      isSuccess: true,
+      didCompile: true,
+      errors: [],
+      summary: "",
+    },
   }),
 }));
 

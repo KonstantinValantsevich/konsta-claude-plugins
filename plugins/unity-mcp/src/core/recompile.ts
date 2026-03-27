@@ -7,8 +7,6 @@ import {
   touchMarker,
 } from "../lib/project/changes.js";
 import { ensureBridgeInstalled, ensureGitExclude } from "../lib/bridge/install.js";
-import { unityIsRunning } from "../lib/compile/applescript.js";
-import { runCliFallback } from "../lib/compile/cli-fallback.js";
 import { sendBridgeRequest } from "../lib/bridge/request.js";
 import { parseBridgeStatusToResult } from "../lib/bridge/ipc.js";
 import type { Logger, RecompileResult, CompilationError } from "./types.js";
@@ -39,30 +37,19 @@ export async function recompile(
   }
   logger.log(bridgeChangedThisRun ? "Bridge updated, triggering recompilation" : "C# files changed, triggering recompilation");
 
-  // 3. Compile
-  let compileErrors: string[];
-  let success: boolean;
-  let didCompile: boolean;
-
-  if (unityIsRunning(projectPath)) {
-    const result = await sendBridgeRequest(projectPath, "recompile");
-    if (!result.ok) {
-      return {
-        success: false,
-        skipped: false,
-        errors: [{ assembly: "", file: "", line: 0, column: 0, message: result.message, type: "error" }],
-      };
-    }
-    const parsed = parseBridgeStatusToResult(result.status);
-    success = parsed.success;
-    didCompile = parsed.didCompile;
-    compileErrors = parsed.errors;
-  } else {
-    const cliResult = await runCliFallback(projectPath);
-    success = cliResult.success;
-    didCompile = cliResult.didCompile;
-    compileErrors = cliResult.errors;
+  // 3. Compile via bridge (auto-launches Unity if needed)
+  const result = await sendBridgeRequest(projectPath, "recompile");
+  if (!result.ok) {
+    return {
+      success: false,
+      skipped: false,
+      errors: [{ assembly: "", file: "", line: 0, column: 0, message: result.message, type: "error" }],
+    };
   }
+  const parsed = parseBridgeStatusToResult(result.status);
+  const success = parsed.success;
+  const didCompile = parsed.didCompile;
+  const compileErrors = parsed.errors;
 
   // 4. Touch marker when recompilation was attempted
   if (success || didCompile) {
