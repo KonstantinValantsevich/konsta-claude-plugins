@@ -1,5 +1,6 @@
 // src/hook/index.ts
-import fs10 from "node:fs";
+import fs11 from "node:fs";
+import { fileURLToPath as fileURLToPath3 } from "node:url";
 
 // src/lib/project/detect.ts
 import fs from "node:fs";
@@ -34,7 +35,8 @@ var POLL_INTERVAL_MS = 500;
 var BRIDGE_READY_TIMEOUT_MS = 12e4;
 var BRIDGE_STATUS_TIMEOUT_MS = 12e4;
 var TEST_STATUS_TIMEOUT_MS = 3e5;
-var UNITY_LAUNCH_TIMEOUT_MS = 3e4;
+var UNITY_LAUNCH_TIMEOUT_MS = 6e4;
+var UNITY_BUILD_TARGET = "iOS";
 var BRIDGE_READY_LAUNCH_TIMEOUT_MS = 3e5;
 var CACHE_DIR = path2.join(os.homedir(), ".claude", "cache", "unity-recompile");
 var MARKER_DIR = path2.join(CACHE_DIR, "markers");
@@ -315,7 +317,7 @@ async function ensureUnityRunning(projectPath, launchTimeoutMs = UNITY_LAUNCH_TI
     `Unity not running. Launching Unity ${version} (this may take a moment)...
 `
   );
-  const child = spawn(binaryPath, ["-projectPath", projectPath], {
+  const child = spawn(binaryPath, ["-projectPath", projectPath, "-buildTarget", UNITY_BUILD_TARGET], {
     detached: true,
     stdio: "ignore"
   });
@@ -696,16 +698,16 @@ var Diff = class {
       }
     }
   }
-  addToPath(path8, added, removed, oldPosInc, options) {
-    const last = path8.lastComponent;
+  addToPath(path9, added, removed, oldPosInc, options) {
+    const last = path9.lastComponent;
     if (last && !options.oneChangePerToken && last.added === added && last.removed === removed) {
       return {
-        oldPos: path8.oldPos + oldPosInc,
+        oldPos: path9.oldPos + oldPosInc,
         lastComponent: { count: last.count + 1, added, removed, previousComponent: last.previousComponent }
       };
     } else {
       return {
-        oldPos: path8.oldPos + oldPosInc,
+        oldPos: path9.oldPos + oldPosInc,
         lastComponent: { count: 1, added, removed, previousComponent: last }
       };
     }
@@ -1170,17 +1172,74 @@ async function lint(projectPath, options = {}) {
   return { filesLinted: filesToLint.length, success: true };
 }
 
-// src/hook/index.ts
-function parseCwdFromStdin() {
+// src/hook/worktree-state.ts
+import fs10 from "node:fs";
+import path8 from "node:path";
+import os2 from "node:os";
+var DEFAULT_STATE_FILE_PATH = path8.join(os2.tmpdir(), "unity-mcp-worktrees.json");
+var STALE_THRESHOLD_MS = 24 * 60 * 60 * 1e3;
+var stateFilePath = DEFAULT_STATE_FILE_PATH;
+function readState() {
+  let state;
   try {
-    const stdin = fs10.readFileSync(0, "utf-8");
+    const raw = fs10.readFileSync(stateFilePath, "utf-8");
+    state = JSON.parse(raw);
+  } catch {
+    return {};
+  }
+  const now = Date.now();
+  let pruned = false;
+  for (const key of Object.keys(state)) {
+    if (now - state[key].createdAt > STALE_THRESHOLD_MS) {
+      delete state[key];
+      pruned = true;
+    }
+  }
+  if (pruned) {
+    writeState(state);
+  }
+  return state;
+}
+function writeState(state) {
+  const dir = path8.dirname(stateFilePath);
+  if (!fs10.existsSync(dir)) {
+    fs10.mkdirSync(dir, { recursive: true });
+  }
+  const tmp = stateFilePath + `.${process.pid}.tmp`;
+  fs10.writeFileSync(tmp, JSON.stringify(state, null, 2));
+  fs10.renameSync(tmp, stateFilePath);
+}
+function registerWorktree(sessionId, worktreePath) {
+  const state = readState();
+  state[sessionId] = { path: worktreePath, createdAt: Date.now() };
+  writeState(state);
+}
+function unregisterWorktree(sessionId) {
+  const state = readState();
+  delete state[sessionId];
+  writeState(state);
+}
+function resolveTarget(sessionId, fallbackCwd) {
+  const state = readState();
+  return state[sessionId]?.path ?? fallbackCwd;
+}
+
+// src/hook/index.ts
+function parseStdinInput() {
+  try {
+    const stdin = fs11.readFileSync(0, "utf-8");
     if (stdin) {
       const data = JSON.parse(stdin);
-      if (data.cwd) return data.cwd;
+      return {
+        session_id: data.session_id ?? "",
+        cwd: data.cwd ?? process.cwd(),
+        hook_event_name: data.hook_event_name ?? "",
+        worktree_path: data.worktree_path
+      };
     }
   } catch {
   }
-  return process.cwd();
+  return { session_id: "", cwd: process.cwd(), hook_event_name: "" };
 }
 var logger = {
   log(msg) {
@@ -1190,41 +1249,68 @@ var logger = {
     log(`ERROR: ${msg}`);
   }
 };
-async function main() {
-  logger.log("=== Hook started ===");
-  const cwd = parseCwdFromStdin();
-  logger.log(`cwd: ${cwd}`);
-  const projectPath = detectProject(cwd);
+async function handleHook(input) {
+  logger.log(`=== Hook started (${input.hook_event_name}) ===`);
+  if (input.hook_event_name === "WorktreeCreate") {
+    if (input.worktree_path && input.session_id) {
+      registerWorktree(input.session_id, input.worktree_path);
+      logger.log(`Registered worktree: ${input.worktree_path} for session ${input.session_id}`);
+    }
+    return "registered";
+  }
+  if (input.hook_event_name === "WorktreeRemove") {
+    if (input.session_id) {
+      unregisterWorktree(input.session_id);
+      logger.log(`Unregistered worktree for session ${input.session_id}`);
+    }
+    return "unregistered";
+  }
+  const target = resolveTarget(input.session_id, input.cwd);
+  logger.log(`target: ${target} (cwd: ${input.cwd}, session: ${input.session_id})`);
+  const projectPath = detectProject(target);
   if (!projectPath) {
-    logger.log(`Not a Unity project: ${cwd}`);
-    process.exit(0);
+    logger.log(`Not a Unity project: ${target}`);
+    return "not-unity";
   }
   logger.log(`Unity project: ${projectPath}`);
   const skipMarker = `${projectPath}/.claude/hooks-skip-recompile`;
-  if (fs10.existsSync(skipMarker)) {
+  if (fs11.existsSync(skipMarker)) {
     logger.log("Skipping: project has .claude/hooks-skip-recompile marker");
-    process.exit(0);
+    return "skipped-marker";
   }
   const result = await recompile(projectPath, logger);
   if (result.skipped) {
     logger.log("No changes detected, exiting");
-    process.exit(0);
+    return "skipped";
   }
   if (result.success) {
     logger.log("SUCCESS: Unity recompilation complete");
     process.stderr.write("Unity compiled successfully\n");
     await lint(projectPath, { logger });
-    process.exit(0);
+    return "success";
   }
   logger.log("FAILED: Unity compilation errors found");
   process.stderr.write("Unity compilation failed:\n\n");
   process.stderr.write(result.errors.map((e) => e.message).join("\n") + "\n\n");
   process.stderr.write("Fix these errors to continue.\n");
-  process.exit(2);
+  return "failed";
 }
-main().catch((err) => {
-  logger.error(`Unhandled error: ${err}`);
-  process.stderr.write(`Unity recompile hook error: ${err}
+async function main() {
+  const input = parseStdinInput();
+  const result = await handleHook(input);
+  if (result === "failed") {
+    process.exit(2);
+  }
+}
+var isMain = process.argv[1] === fileURLToPath3(import.meta.url);
+if (isMain) {
+  main().catch((err) => {
+    logger.error(`Unhandled error: ${err}`);
+    process.stderr.write(`Unity recompile hook error: ${err}
 `);
-  process.exit(1);
-});
+    process.exit(1);
+  });
+}
+export {
+  handleHook
+};
