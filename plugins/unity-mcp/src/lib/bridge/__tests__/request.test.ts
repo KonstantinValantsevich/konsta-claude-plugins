@@ -2,8 +2,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { BridgeResult } from "../types.js";
 
 // Mock all external dependencies before importing the module under test
+vi.mock("../launch.js", () => ({
+  ensureUnityRunning: vi.fn(),
+}));
+
 vi.mock("../../compile/applescript.js", () => ({
-  unityIsRunning: vi.fn(),
   triggerEditorRefreshOnly: vi.fn(),
 }));
 
@@ -34,25 +37,23 @@ describe("sendBridgeRequest", () => {
     vi.clearAllMocks();
   });
 
-  it("returns unity_not_running when Unity is not running", async () => {
-    const { unityIsRunning } = await import("../../compile/applescript.js");
-    (unityIsRunning as ReturnType<typeof vi.fn>).mockReturnValue(false);
+  it("throws when ensureUnityRunning fails", async () => {
+    const { ensureUnityRunning } = await import("../launch.js");
+    (ensureUnityRunning as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error("unity_launch_failed: Unity process did not appear within 30s."),
+    );
 
     const { sendBridgeRequest } = await import("../request.js");
-    const result: BridgeResult = await sendBridgeRequest("/project", "list_tests");
-
-    expect(result).toEqual({
-      ok: false,
-      error: "unity_not_running",
-      message: "Unity editor is not running.",
-    });
+    await expect(sendBridgeRequest("/project", "list_tests")).rejects.toThrow(
+      "unity_launch_failed",
+    );
   });
 
   it("sends request and returns ok when bridge is ready", async () => {
-    const { unityIsRunning } = await import("../../compile/applescript.js");
+    const { ensureUnityRunning } = await import("../launch.js");
     const { bridgeReadyMatchesProject, waitForBridgeStatus } = await import("../ipc.js");
 
-    (unityIsRunning as ReturnType<typeof vi.fn>).mockReturnValue(true);
+    (ensureUnityRunning as ReturnType<typeof vi.fn>).mockResolvedValue(false);
     (bridgeReadyMatchesProject as ReturnType<typeof vi.fn>).mockReturnValue(true);
     (waitForBridgeStatus as ReturnType<typeof vi.fn>).mockResolvedValue({
       protocolVersion: 1,
@@ -77,10 +78,11 @@ describe("sendBridgeRequest", () => {
   });
 
   it("bootstraps when bridge is not ready", async () => {
-    const { unityIsRunning, triggerEditorRefreshOnly } = await import("../../compile/applescript.js");
+    const { ensureUnityRunning } = await import("../launch.js");
+    const { triggerEditorRefreshOnly } = await import("../../compile/applescript.js");
     const { bridgeReadyMatchesProject, waitForBridgeReady, waitForBridgeStatus } = await import("../ipc.js");
 
-    (unityIsRunning as ReturnType<typeof vi.fn>).mockReturnValue(true);
+    (ensureUnityRunning as ReturnType<typeof vi.fn>).mockResolvedValue(false);
     (bridgeReadyMatchesProject as ReturnType<typeof vi.fn>).mockReturnValue(false);
     (waitForBridgeReady as ReturnType<typeof vi.fn>).mockResolvedValue(true);
 
@@ -106,10 +108,10 @@ describe("sendBridgeRequest", () => {
   });
 
   it("returns bridge_bootstrap_failed when readiness times out", async () => {
-    const { unityIsRunning } = await import("../../compile/applescript.js");
+    const { ensureUnityRunning } = await import("../launch.js");
     const { bridgeReadyMatchesProject, waitForBridgeReady } = await import("../ipc.js");
 
-    (unityIsRunning as ReturnType<typeof vi.fn>).mockReturnValue(true);
+    (ensureUnityRunning as ReturnType<typeof vi.fn>).mockResolvedValue(false);
     (bridgeReadyMatchesProject as ReturnType<typeof vi.fn>).mockReturnValue(false);
     (waitForBridgeReady as ReturnType<typeof vi.fn>).mockResolvedValue(false);
 
@@ -123,11 +125,36 @@ describe("sendBridgeRequest", () => {
     });
   });
 
+  it("uses extended bootstrap timeout when Unity was freshly launched", async () => {
+    const { ensureUnityRunning } = await import("../launch.js");
+    const { bridgeReadyMatchesProject, waitForBridgeReady, waitForBridgeStatus } = await import("../ipc.js");
+
+    // ensureUnityRunning returns true = freshly launched
+    (ensureUnityRunning as ReturnType<typeof vi.fn>).mockResolvedValue(true);
+    (bridgeReadyMatchesProject as ReturnType<typeof vi.fn>).mockReturnValue(false);
+    (waitForBridgeReady as ReturnType<typeof vi.fn>).mockResolvedValue(false);
+
+    const { sendBridgeRequest } = await import("../request.js");
+    const result = await sendBridgeRequest("/project", "recompile");
+
+    // Should have used the 300s launch timeout, not the default 120s
+    expect(waitForBridgeReady).toHaveBeenCalledWith(
+      expect.any(String),
+      "/project",
+      300_000,
+    );
+    expect(result).toEqual({
+      ok: false,
+      error: "bridge_bootstrap_failed",
+      message: "Bridge did not become ready after bootstrap refresh.",
+    });
+  });
+
   it("returns request_timeout when status poll times out", async () => {
-    const { unityIsRunning } = await import("../../compile/applescript.js");
+    const { ensureUnityRunning } = await import("../launch.js");
     const { bridgeReadyMatchesProject, waitForBridgeStatus } = await import("../ipc.js");
 
-    (unityIsRunning as ReturnType<typeof vi.fn>).mockReturnValue(true);
+    (ensureUnityRunning as ReturnType<typeof vi.fn>).mockResolvedValue(false);
     (bridgeReadyMatchesProject as ReturnType<typeof vi.fn>).mockReturnValue(true);
     (waitForBridgeStatus as ReturnType<typeof vi.fn>).mockResolvedValue(null);
 
@@ -142,10 +169,10 @@ describe("sendBridgeRequest", () => {
   });
 
   it("returns version_mismatch when bridge version doesn't match", async () => {
-    const { unityIsRunning } = await import("../../compile/applescript.js");
+    const { ensureUnityRunning } = await import("../launch.js");
     const { bridgeReadyMatchesProject, waitForBridgeStatus } = await import("../ipc.js");
 
-    (unityIsRunning as ReturnType<typeof vi.fn>).mockReturnValue(true);
+    (ensureUnityRunning as ReturnType<typeof vi.fn>).mockResolvedValue(false);
     (bridgeReadyMatchesProject as ReturnType<typeof vi.fn>).mockReturnValue(true);
     (waitForBridgeStatus as ReturnType<typeof vi.fn>).mockResolvedValue({
       protocolVersion: 1, bridgeVersion: "99", requestId: "test-req-001",

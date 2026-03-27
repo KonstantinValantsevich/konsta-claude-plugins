@@ -2,16 +2,15 @@ import fs from "node:fs";
 import {
   bridgePaths,
   BRIDGE_PROTOCOL_VERSION,
+  BRIDGE_READY_LAUNCH_TIMEOUT_MS,
   BRIDGE_READY_TIMEOUT_MS,
   BRIDGE_STATUS_TIMEOUT_MS,
   BRIDGE_VERSION,
   TEST_STATUS_TIMEOUT_MS,
 } from "../config.js";
 import { log } from "../logger.js";
-import {
-  triggerEditorRefreshOnly,
-  unityIsRunning,
-} from "../compile/applescript.js";
+import { triggerEditorRefreshOnly } from "../compile/applescript.js";
+import { ensureUnityRunning } from "./launch.js";
 import { ensureBridgeInstalled, ensureGitExclude } from "./install.js";
 import type { BridgeAction, BridgeRequest, BridgeResult, SearchPayload } from "./types.js";
 import type { TestDiscoveryFilters } from "./types.js";
@@ -48,10 +47,8 @@ export async function sendBridgeRequest(
     timeoutMs?: number;
   },
 ): Promise<BridgeResult> {
-  // 1. Check Unity running
-  if (!unityIsRunning(projectPath)) {
-    return { ok: false, error: "unity_not_running", message: "Unity editor is not running." };
-  }
+  // 1. Ensure Unity is running (launches if needed)
+  const freshlyLaunched = await ensureUnityRunning(projectPath);
 
   // 2. Install bridge + ensure git exclude + create IPC dir
   const paths = bridgePaths(projectPath);
@@ -64,7 +61,8 @@ export async function sendBridgeRequest(
     log("Bridge not ready, starting bootstrap flow");
     triggerEditorRefreshOnly(projectPath);
 
-    const ready = await waitForBridgeReady(paths.readyFile, projectPath, BRIDGE_READY_TIMEOUT_MS);
+    const bootstrapTimeout = freshlyLaunched ? BRIDGE_READY_LAUNCH_TIMEOUT_MS : BRIDGE_READY_TIMEOUT_MS;
+    const ready = await waitForBridgeReady(paths.readyFile, projectPath, bootstrapTimeout);
     if (!ready) {
       return { ok: false, error: "bridge_bootstrap_failed", message: "Bridge did not become ready after bootstrap refresh." };
     }
