@@ -5,6 +5,7 @@ import { execSync } from "node:child_process";
 import { readState } from "./helpers/state.js";
 import { createMcpClient, type McpTestClient } from "./helpers/mcp-client.js";
 import { triggerOsascriptRefresh } from "./helpers/unity.js";
+import { findUnityPid } from "../../src/lib/compile/applescript.js";
 import {
   BRIDGE_EDITOR_DIR,
   BRIDGE_VERSION,
@@ -14,13 +15,11 @@ import {
 
 let mcp: McpTestClient;
 let projectPath: string;
-let unityPid: number;
 
 describe("Phase 01 — Bridge Lifecycle", () => {
   beforeAll(async () => {
     const state = readState();
     projectPath = state.projectPath;
-    unityPid = state.unityPid;
 
     // Cross-phase isolation: reset to baseline
     execSync("git reset --hard e2e-baseline && git clean -fd -- Assets/", {
@@ -31,7 +30,7 @@ describe("Phase 01 — Bridge Lifecycle", () => {
     // Create MCP client
     mcp = await createMcpClient(projectPath);
 
-    // Bootstrap: reinstall bridge after git clean
+    // First tool call: auto-launches Unity + installs bridge + recompiles
     await mcp.callTool("unity_recompile");
   }, 600_000);
 
@@ -71,7 +70,9 @@ describe("Phase 01 — Bridge Lifecycle", () => {
     fs.writeFileSync(basePath, baseContent);
 
     // Trigger Cmd+R so Unity recompiles the stale bridge
-    triggerOsascriptRefresh(unityPid);
+    const pid = findUnityPid(projectPath);
+    expect(pid).not.toBeNull();
+    triggerOsascriptRefresh(parseInt(pid!, 10));
 
     // Wait for bridge-ready.json to appear with stale version
     const readyFile = path.join(
