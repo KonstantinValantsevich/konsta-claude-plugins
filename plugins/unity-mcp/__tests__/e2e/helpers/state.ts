@@ -5,7 +5,6 @@ import os from "node:os";
 export interface E2EState {
   projectPath: string;
   unityVersion: string;
-  unityPid: number;
   jbAvailable: boolean;
 }
 
