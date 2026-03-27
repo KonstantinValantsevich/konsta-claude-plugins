@@ -291,7 +291,7 @@ Read unity://assets/search-syntax resource for full syntax reference.`,
       projectPath: z.string().describe("Unity project root path"),
       cursor: z.number().optional().describe("Resume from this cursor. Omit to subscribe from now. Pass 0 for history."),
       limit: z.number().optional().describe("Max entries to return (1-100, default 100)"),
-      filter: z.enum(["Log", "Warning", "Error", "Exception"]).optional().describe("Filter by log type"),
+      filter: z.enum(["Log", "Warning", "Error", "Exception", "Assert"]).optional().describe("Filter by log type"),
       search: z.string().optional().describe("Text search within message and stackTrace"),
     },
     async ({ projectPath, cursor, limit, filter, search }) => {
@@ -314,7 +314,7 @@ Read unity://assets/search-syntax resource for full syntax reference.`,
     {
       projectPath: z.string().describe("Unity project root path"),
       limit: z.number().optional().describe("Max entries to return (1-100, default 100)"),
-      filter: z.enum(["Log", "Warning", "Error", "Exception"]).optional().describe("Filter by log type"),
+      filter: z.enum(["Log", "Warning", "Error", "Exception", "Assert"]).optional().describe("Filter by log type"),
       search: z.string().optional().describe("Text search within message and stackTrace"),
     },
     async ({ projectPath, limit, filter, search }) => {

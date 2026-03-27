@@ -22749,7 +22749,7 @@ Read unity://assets/search-syntax resource for full syntax reference.`,
       projectPath: external_exports.string().describe("Unity project root path"),
       cursor: external_exports.number().optional().describe("Resume from this cursor. Omit to subscribe from now. Pass 0 for history."),
       limit: external_exports.number().optional().describe("Max entries to return (1-100, default 100)"),
-      filter: external_exports.enum(["Log", "Warning", "Error", "Exception"]).optional().describe("Filter by log type"),
+      filter: external_exports.enum(["Log", "Warning", "Error", "Exception", "Assert"]).optional().describe("Filter by log type"),
       search: external_exports.string().optional().describe("Text search within message and stackTrace")
     },
     async ({ projectPath, cursor, limit, filter, search }) => {
@@ -22771,7 +22771,7 @@ Read unity://assets/search-syntax resource for full syntax reference.`,
     {
       projectPath: external_exports.string().describe("Unity project root path"),
       limit: external_exports.number().optional().describe("Max entries to return (1-100, default 100)"),
-      filter: external_exports.enum(["Log", "Warning", "Error", "Exception"]).optional().describe("Filter by log type"),
+      filter: external_exports.enum(["Log", "Warning", "Error", "Exception", "Assert"]).optional().describe("Filter by log type"),
       search: external_exports.string().optional().describe("Text search within message and stackTrace")
     },
     async ({ projectPath, limit, filter, search }) => {

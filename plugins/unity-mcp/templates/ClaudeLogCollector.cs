@@ -160,6 +160,14 @@ internal static class ClaudeLogCollector
         }
     }
 
+    internal static int GetBufferedCount()
+    {
+        lock (Sync)
+        {
+            return _count;
+        }
+    }
+
     private static bool MatchesFilter(LogEntry entry, string filter, string search)
     {
         if (!string.IsNullOrEmpty(filter) && !string.Equals(entry.type, filter, StringComparison.OrdinalIgnoreCase))

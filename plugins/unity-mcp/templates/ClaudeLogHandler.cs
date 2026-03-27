@@ -40,7 +40,7 @@ internal static class ClaudeLogHandler
                 {
                     entries = new System.Collections.Generic.List<ClaudeLogCollector.LogEntry>(),
                     nextCursor = currentCursor,
-                    totalBuffered = 0,
+                    totalBuffered = ClaudeLogCollector.GetBufferedCount(),
                     dropped = 0,
                 };
             }
