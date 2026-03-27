@@ -6,8 +6,8 @@ import { recompile } from "../../src/core/recompile.js";
 import { BRIDGE_CS_FILES, BRIDGE_EDITOR_DIR, MARKER_DIR } from "../../src/lib/config.js";
 import { getMarkerPath, ensureMarker, touchMarker } from "../../src/lib/project/changes.js";
 
-vi.mock("../../src/lib/bridge/request.js", () => ({
-  sendBridgeRequest: vi.fn().mockResolvedValue({
+const { mockSendBridgeRequest } = vi.hoisted(() => {
+  const mockSendBridgeRequest = vi.fn().mockResolvedValue({
     ok: true,
     status: {
       protocolVersion: 1,
@@ -20,7 +20,12 @@ vi.mock("../../src/lib/bridge/request.js", () => ({
       errors: [],
       summary: "",
     },
-  }),
+  });
+  return { mockSendBridgeRequest };
+});
+
+vi.mock("../../src/lib/bridge/request.js", () => ({
+  sendBridgeRequest: mockSendBridgeRequest,
 }));
 
 describe("recompile", () => {
@@ -65,6 +70,46 @@ describe("recompile", () => {
     expect(result.skipped).toBe(true);
     expect(result.success).toBe(true);
     expect(result.errors).toHaveLength(0);
+  });
+
+  it("returns errors when no C# files changed but project still has compilation errors", async () => {
+    // Pre-install bridge files so ensureBridgeInstalled returns changed=false
+    const bridgeDir = path.join(projectPath, BRIDGE_EDITOR_DIR);
+    fs.mkdirSync(bridgeDir, { recursive: true });
+    const templatesDir = path.resolve(__dirname, "../../templates");
+    for (const filename of BRIDGE_CS_FILES) {
+      const templatePath = path.join(templatesDir, filename);
+      fs.copyFileSync(templatePath, path.join(bridgeDir, filename));
+    }
+
+    // Run once to create marker, then touch marker so bridge .cs files aren't "newer"
+    await recompile(projectPath);
+    const markerPath = getMarkerPath(projectPath, "recompile");
+    touchMarker(markerPath);
+
+    // Now mock the bridge to return compilation errors (project has existing errors)
+    mockSendBridgeRequest.mockResolvedValueOnce({
+      ok: true,
+      status: {
+        protocolVersion: 1,
+        bridgeVersion: "4",
+        requestId: "test-002",
+        projectPath,
+        state: "failed",
+        isSuccess: false,
+        didCompile: false,
+        errors: [{ file: "Assets/Foo.cs", line: 10, column: 5, message: "Assets/Foo.cs(10,5): error CS1002: ; expected" }],
+        summary: "Compilation failed",
+      },
+    });
+
+    const result = await recompile(projectPath);
+    expect(result.skipped).toBe(false);
+    expect(result.success).toBe(false);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0].file).toBe("Assets/Foo.cs");
+    expect(result.errors[0].line).toBe(10);
+    expect(result.errors[0].column).toBe(5);
   });
 
   it("does not skip when bridge files are missing even without C# changes", async () => {

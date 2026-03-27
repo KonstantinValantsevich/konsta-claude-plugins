@@ -21504,6 +21504,22 @@ async function sendRawRequest(projectPath, paths, action, opts) {
 var noopLogger = { log() {
 }, error() {
 } };
+function parseErrorStrings(errorStrings) {
+  return errorStrings.map((errStr) => {
+    const match = errStr.match(/^(.+)\((\d+),(\d+)\):\s*(.+)$/);
+    if (match) {
+      return {
+        assembly: "",
+        file: match[1],
+        line: parseInt(match[2], 10),
+        column: parseInt(match[3], 10),
+        message: errStr,
+        type: "error"
+      };
+    }
+    return { assembly: "", file: "", line: 0, column: 0, message: errStr, type: "error" };
+  });
+}
 async function recompile(projectPath, logger = noopLogger) {
   fs7.mkdirSync(MARKER_DIR, { recursive: true });
   const markerPath = getMarkerPath(projectPath, "recompile");
@@ -21512,7 +21528,15 @@ async function recompile(projectPath, logger = noopLogger) {
   ensureGitExclude(projectPath);
   const csChanged = hasChangedCsFiles(projectPath, markerPath);
   if (!csChanged && !bridgeChangedThisRun) {
-    logger.log("No .cs files changed since last check");
+    logger.log("No .cs files changed since last check \u2014 checking for existing errors");
+    const checkResult = await sendBridgeRequest(projectPath, "recompile");
+    if (checkResult.ok) {
+      const parsed2 = parseBridgeStatusToResult(checkResult.status);
+      if (!parsed2.success && parsed2.errors.length > 0) {
+        logger.log("Project still has compilation errors");
+        return { success: false, skipped: false, errors: parseErrorStrings(parsed2.errors) };
+      }
+    }
     return { success: true, skipped: true, errors: [] };
   }
   logger.log(bridgeChangedThisRun ? "Bridge updated, triggering recompilation" : "C# files changed, triggering recompilation");
@@ -21527,26 +21551,11 @@ async function recompile(projectPath, logger = noopLogger) {
   const parsed = parseBridgeStatusToResult(result.status);
   const success = parsed.success;
   const didCompile = parsed.didCompile;
-  const compileErrors = parsed.errors;
   if (success || didCompile) {
     touchMarker(markerPath);
     logger.log("Marker file updated");
   }
-  const errors = compileErrors.map((errStr) => {
-    const match = errStr.match(/^(.+)\((\d+),(\d+)\):\s*(.+)$/);
-    if (match) {
-      return {
-        assembly: "",
-        file: match[1],
-        line: parseInt(match[2], 10),
-        column: parseInt(match[3], 10),
-        message: errStr,
-        type: "error"
-      };
-    }
-    return { assembly: "", file: "", line: 0, column: 0, message: errStr, type: "error" };
-  });
-  return { success, skipped: false, errors };
+  return { success, skipped: false, errors: parseErrorStrings(parsed.errors) };
 }
 
 // src/core/status.ts
