@@ -5,10 +5,8 @@ import {
   findLatestUnityVersion,
   unityBinaryPath,
   createUnityProject,
-  openUnityEditor,
-  waitForUnityProcess,
   isJbAvailable,
-  closeUnity,
+  closeUnityForProject,
 } from "./helpers/unity.js";
 import { writeState, readState, cleanupState } from "./helpers/state.js";
 
@@ -20,10 +18,8 @@ const PROJECT_DIR = path.join(PLUGIN_ROOT, "e2e-project");
 function emergencyCleanup(): void {
   try {
     const state = readState();
-    if (state.unityPid) {
-      try { process.kill(state.unityPid, "SIGKILL"); } catch { /* already dead */ }
-    }
     if (state.projectPath) {
+      closeUnityForProject(state.projectPath);
       fs.rmSync(state.projectPath, { recursive: true, force: true });
     }
     cleanupState();
@@ -90,19 +86,10 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   execSync("git tag e2e-baseline", { cwd: PROJECT_DIR, stdio: "ignore" });
   console.log("[E2E] Git initialized with e2e-baseline tag");
 
-  // 6. Open editor (non-batch)
-  console.log("[E2E] Opening Unity Editor...");
-  openUnityEditor(unityBinaryPath(version), PROJECT_DIR);
-
-  // 7. Wait for Unity process to appear
-  const pid = await waitForUnityProcess(PROJECT_DIR);
-  console.log(`[E2E] Unity process detected: PID ${pid}`);
-
-  // 8. Write shared state
+  // 7. Write shared state
   writeState({
     projectPath: PROJECT_DIR,
     unityVersion: version,
-    unityPid: pid,
     jbAvailable,
   });
 
@@ -113,12 +100,10 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     console.log("[E2E] Starting global teardown...");
     try {
       const state = readState();
-      if (state.unityPid) {
-        console.log(`[E2E] Closing Unity (PID ${state.unityPid})...`);
-        closeUnity(state.unityPid);
-        console.log("[E2E] Unity closed");
-      }
       if (state.projectPath) {
+        console.log("[E2E] Closing Unity if running...");
+        closeUnityForProject(state.projectPath);
+        console.log("[E2E] Unity closed");
         console.log(`[E2E] Deleting project: ${state.projectPath}`);
         fs.rmSync(state.projectPath, { recursive: true, force: true });
         console.log("[E2E] Project deleted");
