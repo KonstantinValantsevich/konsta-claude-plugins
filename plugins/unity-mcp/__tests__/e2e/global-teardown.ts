@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import { readState, cleanupState } from "./helpers/state.js";
-import { closeUnity } from "./helpers/unity.js";
+import { closeUnityForProject } from "./helpers/unity.js";
 
 export default async function globalTeardown(): Promise<void> {
   console.log("[E2E] Starting global teardown...");
@@ -13,15 +13,13 @@ export default async function globalTeardown(): Promise<void> {
     return;
   }
 
-  // 1. Close Unity
-  if (state.unityPid) {
-    console.log(`[E2E] Closing Unity (PID ${state.unityPid})...`);
-    closeUnity(state.unityPid);
-    console.log("[E2E] Unity closed");
-  }
-
-  // 2. Delete temp project
+  // 1. Close Unity if still running
   if (state.projectPath) {
+    console.log("[E2E] Closing Unity if running...");
+    closeUnityForProject(state.projectPath);
+    console.log("[E2E] Unity closed");
+
+    // 2. Delete temp project
     console.log(`[E2E] Deleting project: ${state.projectPath}`);
     fs.rmSync(state.projectPath, { recursive: true, force: true });
     console.log("[E2E] Project deleted");
