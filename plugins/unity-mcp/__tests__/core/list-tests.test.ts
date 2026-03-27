@@ -54,7 +54,7 @@ describe("listTests", () => {
     const mockStatus = {
       protocolVersion: 1,
       requestId: "mock-list-req-id",
-      bridgeVersion: "4",
+      bridgeVersion: "5",
       projectPath: projectDir,
       state: "failed",
       createdAtUnixMs: Date.now(),
@@ -73,7 +73,7 @@ describe("listTests", () => {
     const mockStatus = {
       protocolVersion: 1,
       requestId: "mock-list-req-id",
-      bridgeVersion: "4",
+      bridgeVersion: "5",
       projectPath: projectDir,
       state: "list_tests_finished",
       createdAtUnixMs: Date.now(),
@@ -110,7 +110,7 @@ describe("listTests", () => {
     const mockStatus = {
       protocolVersion: 1,
       requestId: "mock-list-req-id",
-      bridgeVersion: "4",
+      bridgeVersion: "5",
       projectPath: projectDir,
       state: "list_tests_finished",
       createdAtUnixMs: Date.now(),
@@ -141,7 +141,7 @@ describe("listTests", () => {
     const mockStatus = {
       protocolVersion: 1,
       requestId: "mock-list-req-id",
-      bridgeVersion: "4",
+      bridgeVersion: "5",
       projectPath: projectDir,
       state: "list_tests_finished",
       createdAtUnixMs: Date.now(),

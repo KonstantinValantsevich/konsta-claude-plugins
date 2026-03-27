@@ -57,7 +57,7 @@ describe("searchAssets", () => {
     const mockStatus = {
       protocolVersion: 1,
       requestId: "mock-search-req-id",
-      bridgeVersion: "4",
+      bridgeVersion: "5",
       projectPath: projectDir,
       state: "completed",
       createdAtUnixMs: Date.now(),
@@ -87,7 +87,7 @@ describe("searchAssets", () => {
     const mockStatus = {
       protocolVersion: 1,
       requestId: "mock-search-req-id",
-      bridgeVersion: "4",
+      bridgeVersion: "5",
       projectPath: projectDir,
       state: "completed",
       createdAtUnixMs: Date.now(),
@@ -111,7 +111,7 @@ describe("searchAssets", () => {
     const mockStatus = {
       protocolVersion: 1,
       requestId: "mock-search-req-id",
-      bridgeVersion: "4",
+      bridgeVersion: "5",
       projectPath: projectDir,
       state: "completed",
       createdAtUnixMs: Date.now(),
@@ -136,7 +136,7 @@ describe("searchAssets", () => {
     const mockStatus = {
       protocolVersion: 1,
       requestId: "mock-search-req-id",
-      bridgeVersion: "4",
+      bridgeVersion: "5",
       projectPath: projectDir,
       state: "completed",
       createdAtUnixMs: Date.now(),

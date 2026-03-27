@@ -57,7 +57,7 @@ describe("sendBridgeRequest", () => {
     (bridgeReadyMatchesProject as ReturnType<typeof vi.fn>).mockReturnValue(true);
     (waitForBridgeStatus as ReturnType<typeof vi.fn>).mockResolvedValue({
       protocolVersion: 1,
-      bridgeVersion: "4",
+      bridgeVersion: "5",
       requestId: "test-req-001",
       projectPath: "/project",
       state: "list_tests_finished",
@@ -89,12 +89,12 @@ describe("sendBridgeRequest", () => {
     // First call = handshake, second call = actual request
     (waitForBridgeStatus as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce({
-        protocolVersion: 1, bridgeVersion: "4", requestId: "test-req-001",
+        protocolVersion: 1, bridgeVersion: "5", requestId: "test-req-001",
         projectPath: "/project", state: "completed", isSuccess: true,
         didCompile: false, errors: [], summary: "",
       })
       .mockResolvedValueOnce({
-        protocolVersion: 1, bridgeVersion: "4", requestId: "test-req-001",
+        protocolVersion: 1, bridgeVersion: "5", requestId: "test-req-001",
         projectPath: "/project", state: "completed", isSuccess: true,
         didCompile: true, errors: [], summary: "",
       });
