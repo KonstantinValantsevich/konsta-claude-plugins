@@ -15,6 +15,33 @@
       },
       "source": "./plugins/unity-mcp",
       "category": "development"
+    },
+    {
+      "name": "roslyn-ls",
+      "description": "LSP using roslyn-language-service.",
+      "version": "1.0.0",
+      "author": {
+        "name": "Konsta"
+      },
+      "source": "./plugins/roslyn-ls",
+      "category": "development",
+      "tags": ["csharp"],
+      "lspServers": {
+        "roslyn-ls": {
+          "command": "/Users/konsta/.dotnet/tools/roslyn-language-server",
+          "args": ["--stdio", "--autoLoadProjects", "--logLevel", "Information",
+                   "--extensionLogDirectory", "/tmp/roslyn-logs"],
+          "transport": "stdio",
+          "extensionToLanguage": {
+            ".cs": "csharp",
+            ".csx": "csharp",
+            ".cshtml": "csharp"
+          },
+          "initializationOptions": {},
+          "settings": {},
+          "startupTimeout": 120000
+        }
+      }
     }
   ]
 }

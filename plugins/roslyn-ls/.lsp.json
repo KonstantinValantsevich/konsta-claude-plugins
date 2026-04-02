@@ -1,0 +1,16 @@
+{
+  "csharp": {
+    "command": "/Users/konsta/.dotnet/tools/roslyn-language-server",
+    "args": ["--stdio", "--autoLoadProjects", "--logLevel", "Information",
+             "--extensionLogDirectory", "/tmp/roslyn-logs"],
+    "transport": "stdio",
+    "extensionToLanguage": {
+      ".cs": "csharp",
+      ".csx": "csharp",
+      ".cshtml": "csharp"
+    },
+    "initializationOptions": {},
+    "settings": {},
+    "startupTimeout": 120000
+  }
+}

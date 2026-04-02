@@ -1,0 +1,7 @@
+{
+  "name": "roslyn-ls",
+  "description": "LSP using roslyn-language-service.",
+  "version": "1.0.0",
+  "license": "MIT",
+  "author": { "name": "Konsta" }
+}
