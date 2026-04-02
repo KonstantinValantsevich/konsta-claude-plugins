@@ -55,7 +55,7 @@ describe("runTests", () => {
     const mockStatus: BridgeStatus = {
       protocolVersion: 1,
       requestId: "mock-req-id",
-      bridgeVersion: "4",
+      bridgeVersion: "5",
       projectPath: projectDir,
       state: "tests_finished",
       createdAtUnixMs: Date.now(),

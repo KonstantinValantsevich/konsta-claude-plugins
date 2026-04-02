@@ -20991,7 +20991,7 @@ import fs7 from "node:fs";
 import path from "node:path";
 import os from "node:os";
 var BRIDGE_PROTOCOL_VERSION = 1;
-var BRIDGE_VERSION = "4";
+var BRIDGE_VERSION = "5";
 var POLL_INTERVAL_MS = 500;
 var BRIDGE_READY_TIMEOUT_MS = 12e4;
 var BRIDGE_STATUS_TIMEOUT_MS = 12e4;
@@ -21008,7 +21008,9 @@ var BRIDGE_CS_FILES = [
   "ClaudeBridgeBase.cs",
   "ClaudeRecompileHandler.cs",
   "ClaudeTestHandler.cs",
-  "ClaudeSearchHandler.cs"
+  "ClaudeSearchHandler.cs",
+  "ClaudeLogCollector.cs",
+  "ClaudeLogHandler.cs"
 ];
 var BRIDGE_IPC_DIRNAME = "Library/ClaudeHookIPC";
 var BRIDGE_READY_FILENAME = "bridge-ready.json";
@@ -21339,6 +21341,12 @@ function readBridgeStatus(statusPath) {
       } catch {
       }
     }
+    if (typeof raw.logsResponse === "string" && raw.logsResponse) {
+      try {
+        raw.logsResponse = JSON.parse(raw.logsResponse);
+      } catch {
+      }
+    }
     return raw;
   } catch {
     return null;
@@ -21440,6 +21448,8 @@ function defaultTimeout(action) {
 function reasonForAction(action) {
   if (action === "bootstrap_handshake") return "bridge bootstrap handshake";
   if (action === "search_assets") return "unity_search_assets MCP resource";
+  if (action === "get_logs") return "unity_logs MCP tool";
+  if (action === "get_console") return "unity_console MCP tool";
   return `unity_${action} MCP tool`;
 }
 async function sendBridgeRequest(projectPath, action, opts) {
@@ -22398,6 +22408,86 @@ async function searchAssets(opts) {
   return { ok: true, results: status.searchResults ?? [] };
 }
 
+// src/core/logs.ts
+var noopLogger7 = { log() {
+}, error() {
+} };
+var DEFAULT_LIMIT2 = 100;
+var MAX_LIMIT2 = 100;
+function formatLogEntries(response) {
+  const lines = [];
+  for (const entry of response.entries) {
+    const ts = `+${entry.timestamp.toFixed(2)}s`;
+    lines.push(`[${entry.type}] ${entry.message} (id:${entry.id}, ${ts})`);
+    if (entry.stackTrace) {
+      lines.push(`  ${entry.stackTrace}`);
+    }
+  }
+  if (lines.length > 0) {
+    lines.push("");
+  }
+  lines.push(`Cursor: ${response.nextCursor} | Buffered: ${response.totalBuffered} | Dropped: ${response.dropped}`);
+  return lines.join("\n");
+}
+async function getLogs(opts) {
+  const logger = opts.logger ?? noopLogger7;
+  const limit = Math.min(Math.max(1, opts.limit ?? DEFAULT_LIMIT2), MAX_LIMIT2);
+  const payload = { limit };
+  if (opts.cursor !== void 0) payload.cursor = opts.cursor;
+  if (opts.filter) payload.filter = opts.filter;
+  if (opts.search) payload.search = opts.search;
+  const result = await sendBridgeRequest(opts.projectPath, "get_logs", { payload });
+  if (!result.ok) {
+    return { ok: false, error: result.message };
+  }
+  const { status } = result;
+  logger.log("get_logs request completed");
+  if (!status.isSuccess) {
+    return { ok: false, error: status.summary || "get_logs failed" };
+  }
+  const response = status.logsResponse ?? { entries: [], nextCursor: 0, totalBuffered: 0, dropped: 0 };
+  return {
+    ok: true,
+    entries: response.entries,
+    nextCursor: response.nextCursor,
+    totalBuffered: response.totalBuffered,
+    dropped: response.dropped,
+    formatted: formatLogEntries(response)
+  };
+}
+
+// src/core/console.ts
+var noopLogger8 = { log() {
+}, error() {
+} };
+var DEFAULT_LIMIT3 = 100;
+var MAX_LIMIT3 = 100;
+async function getConsole(opts) {
+  const logger = opts.logger ?? noopLogger8;
+  const limit = Math.min(Math.max(1, opts.limit ?? DEFAULT_LIMIT3), MAX_LIMIT3);
+  const payload = { limit };
+  if (opts.filter) payload.filter = opts.filter;
+  if (opts.search) payload.search = opts.search;
+  const result = await sendBridgeRequest(opts.projectPath, "get_console", { payload });
+  if (!result.ok) {
+    return { ok: false, error: result.message };
+  }
+  const { status } = result;
+  logger.log("get_console request completed");
+  if (!status.isSuccess) {
+    return { ok: false, error: status.summary || "get_console failed" };
+  }
+  const response = status.logsResponse ?? { entries: [], nextCursor: 0, totalBuffered: 0, dropped: 0 };
+  return {
+    ok: true,
+    entries: response.entries,
+    nextCursor: response.nextCursor,
+    totalBuffered: response.totalBuffered,
+    dropped: response.dropped,
+    formatted: formatLogEntries(response)
+  };
+}
+
 // src/mcp/server.ts
 import { fileURLToPath as fileURLToPath3 } from "node:url";
 import nodePath from "node:path";
@@ -22650,6 +22740,51 @@ Read unity://assets/search-syntax resource for full syntax reference.`,
       }
       return {
         content: [{ type: "text", text: JSON.stringify(result.results) }]
+      };
+    }
+  );
+  server.tool(
+    "unity_logs",
+    "Pull Unity Console log entries incrementally using a cursor. First call without cursor subscribes from now (returns current cursor, zero entries). Subsequent calls with cursor return new entries since that cursor. Pass cursor 0 to get buffered history.",
+    {
+      projectPath: external_exports.string().describe("Unity project root path"),
+      cursor: external_exports.number().optional().describe("Resume from this cursor. Omit to subscribe from now. Pass 0 for history."),
+      limit: external_exports.number().optional().describe("Max entries to return (1-100, default 100)"),
+      filter: external_exports.enum(["Log", "Warning", "Error", "Exception", "Assert"]).optional().describe("Filter by log type"),
+      search: external_exports.string().optional().describe("Text search within message and stackTrace")
+    },
+    async ({ projectPath, cursor, limit, filter, search }) => {
+      const result = await getLogs({ projectPath, cursor, limit, filter, search, logger: stderrLogger });
+      if (!result.ok) {
+        return {
+          content: [{ type: "text", text: `Log retrieval failed: ${result.error}` }],
+          isError: true
+        };
+      }
+      return {
+        content: [{ type: "text", text: result.formatted }]
+      };
+    }
+  );
+  server.tool(
+    "unity_console",
+    "Snapshot of recent Unity Console entries \u2014 returns the most recent entries, mirroring what's currently visible in the Unity Console window.",
+    {
+      projectPath: external_exports.string().describe("Unity project root path"),
+      limit: external_exports.number().optional().describe("Max entries to return (1-100, default 100)"),
+      filter: external_exports.enum(["Log", "Warning", "Error", "Exception", "Assert"]).optional().describe("Filter by log type"),
+      search: external_exports.string().optional().describe("Text search within message and stackTrace")
+    },
+    async ({ projectPath, limit, filter, search }) => {
+      const result = await getConsole({ projectPath, limit, filter, search, logger: stderrLogger });
+      if (!result.ok) {
+        return {
+          content: [{ type: "text", text: `Console retrieval failed: ${result.error}` }],
+          isError: true
+        };
+      }
+      return {
+        content: [{ type: "text", text: result.formatted }]
       };
     }
   );

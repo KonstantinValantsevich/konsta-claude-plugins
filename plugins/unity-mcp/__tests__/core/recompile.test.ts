@@ -11,7 +11,7 @@ const { mockSendBridgeRequest } = vi.hoisted(() => {
     ok: true,
     status: {
       protocolVersion: 1,
-      bridgeVersion: "4",
+      bridgeVersion: "5",
       requestId: "test-001",
       projectPath: "/project",
       state: "completed",
@@ -92,7 +92,7 @@ describe("recompile", () => {
       ok: true,
       status: {
         protocolVersion: 1,
-        bridgeVersion: "4",
+        bridgeVersion: "5",
         requestId: "test-002",
         projectPath,
         state: "failed",

@@ -30,7 +30,7 @@ import fs8 from "node:fs";
 import path2 from "node:path";
 import os from "node:os";
 var BRIDGE_PROTOCOL_VERSION = 1;
-var BRIDGE_VERSION = "4";
+var BRIDGE_VERSION = "5";
 var POLL_INTERVAL_MS = 500;
 var BRIDGE_READY_TIMEOUT_MS = 12e4;
 var BRIDGE_STATUS_TIMEOUT_MS = 12e4;
@@ -47,7 +47,9 @@ var BRIDGE_CS_FILES = [
   "ClaudeBridgeBase.cs",
   "ClaudeRecompileHandler.cs",
   "ClaudeTestHandler.cs",
-  "ClaudeSearchHandler.cs"
+  "ClaudeSearchHandler.cs",
+  "ClaudeLogCollector.cs",
+  "ClaudeLogHandler.cs"
 ];
 var BRIDGE_IPC_DIRNAME = "Library/ClaudeHookIPC";
 var BRIDGE_READY_FILENAME = "bridge-ready.json";
@@ -378,6 +380,12 @@ function readBridgeStatus(statusPath) {
       } catch {
       }
     }
+    if (typeof raw.logsResponse === "string" && raw.logsResponse) {
+      try {
+        raw.logsResponse = JSON.parse(raw.logsResponse);
+      } catch {
+      }
+    }
     return raw;
   } catch {
     return null;
@@ -479,6 +487,8 @@ function defaultTimeout(action) {
 function reasonForAction(action) {
   if (action === "bootstrap_handshake") return "bridge bootstrap handshake";
   if (action === "search_assets") return "unity_search_assets MCP resource";
+  if (action === "get_logs") return "unity_logs MCP tool";
+  if (action === "get_console") return "unity_console MCP tool";
   return `unity_${action} MCP tool`;
 }
 async function sendBridgeRequest(projectPath, action, opts) {

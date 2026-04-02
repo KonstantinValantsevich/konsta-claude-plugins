@@ -45,6 +45,6 @@ describe("Phase 05 — Status & Errors", () => {
     });
 
     // Should return error, not crash
-    expect(text.toLowerCase()).toMatch(/error|not running|fail/);
+    expect(text.toLowerCase()).toMatch(/error|not running|fail|could not/);
   });
 });

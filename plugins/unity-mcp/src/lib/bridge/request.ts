@@ -12,7 +12,7 @@ import { log } from "../logger.js";
 import { triggerEditorRefreshOnly } from "../compile/applescript.js";
 import { ensureUnityRunning } from "./launch.js";
 import { ensureBridgeInstalled, ensureGitExclude } from "./install.js";
-import type { BridgeAction, BridgeRequest, BridgeResult, SearchPayload } from "./types.js";
+import type { BridgeAction, BridgeRequest, BridgeResult, SearchPayload, LogsPayload, ConsolePayload } from "./types.js";
 import type { TestDiscoveryFilters } from "./types.js";
 import {
   bridgeReadyMatchesProject,
@@ -32,6 +32,8 @@ function defaultTimeout(action: BridgeAction | "bootstrap_handshake"): number {
 function reasonForAction(action: BridgeAction | "bootstrap_handshake"): string {
   if (action === "bootstrap_handshake") return "bridge bootstrap handshake";
   if (action === "search_assets") return "unity_search_assets MCP resource";
+  if (action === "get_logs") return "unity_logs MCP tool";
+  if (action === "get_console") return "unity_console MCP tool";
   return `unity_${action} MCP tool`;
 }
 
@@ -43,7 +45,7 @@ export async function sendBridgeRequest(
   projectPath: string,
   action: BridgeAction,
   opts?: {
-    payload?: TestDiscoveryFilters | SearchPayload;
+    payload?: TestDiscoveryFilters | SearchPayload | LogsPayload | ConsolePayload;
     timeoutMs?: number;
   },
 ): Promise<BridgeResult> {
@@ -86,7 +88,7 @@ async function sendRawRequest(
   projectPath: string,
   paths: ReturnType<typeof bridgePaths>,
   action: BridgeAction | "bootstrap_handshake",
-  opts?: { payload?: TestDiscoveryFilters | SearchPayload; timeoutMs?: number },
+  opts?: { payload?: TestDiscoveryFilters | SearchPayload | LogsPayload | ConsolePayload; timeoutMs?: number },
 ): Promise<BridgeResult> {
   const timeoutMs = opts?.timeoutMs ?? defaultTimeout(action);
   const requestId = generateRequestId();

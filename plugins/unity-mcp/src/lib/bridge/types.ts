@@ -6,7 +6,7 @@ export interface BridgeRequest {
   action: BridgeAction | "bootstrap_handshake";
   reason: string;
   source: string;
-  payload?: TestDiscoveryFilters | SearchPayload;
+  payload?: TestDiscoveryFilters | SearchPayload | LogsPayload | ConsolePayload;
 }
 
 /** Filters for test discovery/execution — only flow into bridge requests */
@@ -33,6 +33,38 @@ export interface SearchResultEntry {
   id: string;
   label: string;
   score: number;
+}
+
+/** Payload for get_logs bridge action */
+export interface LogsPayload {
+  cursor?: number;
+  limit: number;
+  filter?: string;
+  search?: string;
+}
+
+/** Payload for get_console bridge action */
+export interface ConsolePayload {
+  limit: number;
+  filter?: string;
+  search?: string;
+}
+
+/** A single log entry returned by get_logs / get_console */
+export interface LogEntry {
+  id: number;
+  type: "Log" | "Warning" | "Error" | "Exception" | "Assert";
+  message: string;
+  stackTrace: string;
+  timestamp: number;
+}
+
+/** Response shape for get_logs and get_console */
+export interface LogsResponse {
+  entries: LogEntry[];
+  nextCursor: number;
+  totalBuffered: number;
+  dropped: number;
 }
 
 export interface CompileError {
@@ -82,6 +114,7 @@ export interface BridgeStatus {
   testResults?: TestResults;
   testList?: TestListResult;
   searchResults?: SearchResultEntry[];
+  logsResponse?: LogsResponse;
 }
 
 export interface TestResults {
@@ -120,7 +153,7 @@ export interface CompileResult {
 // --- Bridge-Aware IPC Layer types ---
 
 /** Actions that tools may request via sendBridgeRequest. */
-export type BridgeAction = "recompile" | "run_tests" | "list_tests" | "search_assets";
+export type BridgeAction = "recompile" | "run_tests" | "list_tests" | "search_assets" | "get_logs" | "get_console";
 
 /** Discriminated union returned by sendBridgeRequest. */
 export type BridgeResult =

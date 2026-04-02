@@ -3,7 +3,7 @@ import os from "node:os";
 
 // Bridge protocol
 export const BRIDGE_PROTOCOL_VERSION = 1;
-export const BRIDGE_VERSION = "4";
+export const BRIDGE_VERSION = "5";
 
 // Timeouts (milliseconds)
 export const POLL_INTERVAL_MS = 500;
@@ -29,6 +29,8 @@ export const BRIDGE_CS_FILES = [
   "ClaudeRecompileHandler.cs",
   "ClaudeTestHandler.cs",
   "ClaudeSearchHandler.cs",
+  "ClaudeLogCollector.cs",
+  "ClaudeLogHandler.cs",
 ];
 export const BRIDGE_IPC_DIRNAME = "Library/ClaudeHookIPC";
 export const BRIDGE_READY_FILENAME = "bridge-ready.json";

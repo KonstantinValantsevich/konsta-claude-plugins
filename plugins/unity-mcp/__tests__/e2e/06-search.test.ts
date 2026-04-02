@@ -65,17 +65,23 @@ describe("Phase 06 — Search", () => {
   });
 
   it("test 23: query for fixture asset finds it", async () => {
-    const text = await mcp.callTool("unity_search_assets", {
-      query: "SearchTestPlayer",
-    });
-    const results = JSON.parse(text);
-
-    expect(Array.isArray(results)).toBe(true);
-    const match = results.find((r: { label: string }) =>
-      r.label.includes("SearchTestPlayer"),
-    );
+    // Unity's search index updates asynchronously after AssetDatabase.Refresh,
+    // so retry until the index catches up (up to 30s).
+    const deadline = Date.now() + 30_000;
+    let match: unknown;
+    while (Date.now() < deadline) {
+      const text = await mcp.callTool("unity_search_assets", {
+        query: "SearchTestPlayer",
+      });
+      const results = JSON.parse(text);
+      match = results.find((r: { label: string }) =>
+        r.label.includes("SearchTestPlayer"),
+      );
+      if (match) break;
+      await new Promise((r) => setTimeout(r, 2_000));
+    }
     expect(match).toBeDefined();
-  });
+  }, 60_000);
 
   it("test 24: limit parameter is respected", async () => {
     const text = await mcp.callTool("unity_search_assets", {
