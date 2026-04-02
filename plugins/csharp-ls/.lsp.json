@@ -1,0 +1,16 @@
+{
+  "csharp": {
+    "command": "/Users/konsta/.dotnet/tools/csharp-ls-adapter",
+    "transport": "stdio",
+    "extensionToLanguage": {
+      ".cs": "csharp",
+      ".csx": "csharp"
+    },
+    "env": {
+      "DOTNET_ROOT": "/opt/homebrew/opt/dotnet@8/libexec"
+    },
+    "initializationOptions": {},
+    "settings": {},
+    "startupTimeout": 120000
+  }
+}
