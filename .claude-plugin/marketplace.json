@@ -25,23 +25,7 @@
       },
       "source": "./plugins/csharp-ls",
       "category": "development",
-      "tags": ["csharp"],
-      "lspServers": {
-        "csharp-ls": {
-          "command": "/Users/konsta/.dotnet/tools/csharp-ls-adapter",
-          "transport": "stdio",
-          "extensionToLanguage": {
-            ".cs": "csharp",
-            ".csx": "csharp"
-          },
-          "env": {
-            "DOTNET_ROOT": "/opt/homebrew/opt/dotnet@8/libexec"
-          },
-          "initializationOptions": {},
-          "settings": {},
-          "startupTimeout": 120000
-        }
-      }
+      "tags": ["csharp"]
     }
   ]
 }
