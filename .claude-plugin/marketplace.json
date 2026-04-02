@@ -9,7 +9,7 @@
     {
       "name": "unity-mcp",
       "description": "Unity Editor integration — recompilation, diagnostics, and linting via MCP",
-      "version": "1.5.4",
+      "version": "1.5.5",
       "author": {
         "name": "Konsta"
       },
@@ -19,7 +19,7 @@
     {
       "name": "csharp-ls",
       "description": "C# LSP using csharp-ls.",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "author": {
         "name": "Konsta"
       },
